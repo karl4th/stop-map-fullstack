@@ -48,7 +48,7 @@ services:
       - internal
 
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/OWNER/stopmap-backend:latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/karl4th/stopmap-backend:latest}
     restart: always
     env_file:
       - ../.env
@@ -73,7 +73,7 @@ services:
           memory: 512M
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/OWNER/stopmap-frontend:latest}
+    image: ${FRONTEND_IMAGE:-ghcr.io/karl4th/stopmap-frontend:latest}
     restart: always
     depends_on:
       - backend
@@ -85,7 +85,7 @@ services:
           memory: 256M
 
   telegram:
-    image: ${TELEGRAM_IMAGE:-ghcr.io/OWNER/stopmap-telegram:latest}
+    image: ${TELEGRAM_IMAGE:-ghcr.io/karl4th/stopmap-telegram:latest}
     restart: always
     env_file:
       - ../.env
