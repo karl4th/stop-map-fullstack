@@ -86,9 +86,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # NEXT_PUBLIC_API_URL встраивается на build-time, для prod всегда /api
           build-args: |
-            NEXT_PUBLIC_API_URL=/api
+            NEXT_PUBLIC_API_URL=https://api.stopmap.kz/api
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
 
