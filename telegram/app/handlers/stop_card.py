@@ -18,10 +18,13 @@ from app.states.stop_card import StopCard
 router = Router()
 
 STATUS_LABELS = {
-    "issued": "📤 Выдана",
-    "acknowledged": "👁 Принята",
-    "closed": "✅ Закрыта",
-    "disputed": "⚠️ Оспорена",
+    "created":      "📋 Создана",
+    "under_review": "👁 На рассмотрении",
+    "in_progress":  "🔧 В работе",
+    "safety_check": "🔍 Проверка ОТ и ТБ",
+    "approved":     "✅ Разрешено к работе",
+    "rejected":     "⛔ Запрещено",
+    "closed":       "🔒 Закрыто",
 }
 
 
@@ -127,15 +130,18 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
             reply_markup=main_menu(),
         )
 
+        # Уведомляем менеджеров участка
         managers = await api.get_managers(data["section_id"])
         for manager in managers:
             try:
                 await bot.send_message(
                     chat_id=manager["telegram_id"],
-                    text=f"🚨 Новая стоп-карта #{card['id']}\n\n"
-                         f"👤 Нарушитель: {data['violator_name']}\n"
-                         f"📄 {data['description']}\n\n"
-                         f"Войдите в панель управления для рассмотрения.",
+                    text=(
+                        f"🚨 Новая стоп-карта #{card['id']}\n\n"
+                        f"👤 Нарушитель: {data['violator_name']}\n"
+                        f"📄 {data['description']}\n\n"
+                        f"Войдите в панель управления для рассмотрения."
+                    ),
                 )
                 if photo_ids:
                     await bot.send_media_group(
@@ -146,6 +152,25 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
                 logger.warning(
                     "Failed to notify manager %s for card #%s: %s",
                     manager["telegram_id"], card["id"], notify_err,
+                )
+
+        # Уведомляем всех инженеров ОТ и ТБ (копия)
+        engineers = await api.get_safety_engineers()
+        for engineer in engineers:
+            try:
+                await bot.send_message(
+                    chat_id=engineer["telegram_id"],
+                    text=(
+                        f"📋 Копия стоп-карты #{card['id']}\n\n"
+                        f"👤 Нарушитель: {data['violator_name']}\n"
+                        f"📄 {data['description']}\n\n"
+                        f"Карта передана менеджеру участка на рассмотрение."
+                    ),
+                )
+            except Exception as notify_err:
+                logger.warning(
+                    "Failed to notify safety engineer %s for card #%s: %s",
+                    engineer["telegram_id"], card["id"], notify_err,
                 )
 
     except Exception as e:

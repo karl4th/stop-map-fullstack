@@ -69,3 +69,10 @@ async def get_managers(section_id: int) -> list[dict]:
         r = await client.get(f"{settings.BACKEND_URL}/bot/sections/{section_id}/managers", headers=_headers)
         r.raise_for_status()
         return r.json()
+
+
+async def get_safety_engineers() -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"{settings.BACKEND_URL}/bot/safety-engineers", headers=_headers)
+        r.raise_for_status()
+        return r.json()

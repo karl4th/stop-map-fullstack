@@ -38,8 +38,6 @@ async def list_stop_cards(
     else:
         cards = await svc.repo.get_all()
 
-    # when year+month+section_id all provided, filter by section in Python
-    # (get_by_month doesn't accept section_id yet)
     if year and month and section_id:
         cards = [c for c in cards if c.section_id == section_id]
     if card_status:
@@ -57,3 +55,15 @@ async def get_stop_card(
         return await svc.get_by_id(stop_card_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.patch("/{stop_card_id}/close", response_model=StopCardResponse)
+async def close_stop_card(
+    stop_card_id: int,
+    svc: StopCardService = Depends(_service),
+    _: User = Depends(require_admin),
+):
+    try:
+        return await svc.close(stop_card_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

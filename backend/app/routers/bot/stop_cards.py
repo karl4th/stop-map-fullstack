@@ -9,7 +9,7 @@ from app.repositories.stop_card import StopCardRepository
 from app.repositories.stop_card_photo import StopCardPhotoRepository
 from app.repositories.user import UserRepository
 from app.routers.deps import verify_bot_token
-from app.schemas.bot import BotStopCardRequest, ManagerTelegramResponse
+from app.schemas.bot import BotStopCardRequest, ManagerTelegramResponse, SafetyEngineerTelegramResponse
 from app.schemas.stop_card import StopCardResponse
 from app.services.stop_card import StopCardService
 
@@ -72,7 +72,7 @@ async def upload_photos(
         return await upload_file(data, photo.content_type, ext)
 
     keys = await asyncio.gather(*[_read_and_upload(p) for p in photos])
-    await svc.photo_repo.create_many(stop_card_id, list(keys))
+    await svc.photo_repo.create_many(stop_card_id, list(keys), photo_type="before")
     return await svc.get_by_id(stop_card_id)
 
 
@@ -96,3 +96,12 @@ async def get_managers(
 ):
     managers = await UserRepository(db).get_managers_by_section(section_id)
     return [m for m in managers if m.telegram_id is not None]
+
+
+@router.get("/safety-engineers", response_model=list[SafetyEngineerTelegramResponse])
+async def get_safety_engineers(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_bot_token),
+):
+    engineers = await UserRepository(db).get_safety_engineers()
+    return [e for e in engineers if e.telegram_id is not None]

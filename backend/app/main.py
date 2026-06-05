@@ -12,6 +12,7 @@ from app.routers.admin import router as admin_router
 from app.routers.bot import router as bot_router
 from app.routers.manager import router as manager_router
 from app.routers.photos import router as photos_router
+from app.routers.safety_engineer import router as safety_engineer_router
 
 
 @asynccontextmanager
@@ -36,6 +37,7 @@ app.add_middleware(
 
 app.include_router(admin_router, prefix="/api")
 app.include_router(manager_router, prefix="/api")
+app.include_router(safety_engineer_router, prefix="/api")
 app.include_router(bot_router, prefix="/api")
 app.include_router(photos_router, prefix="/api")
 

@@ -20,3 +20,10 @@ class ManagerTelegramResponse(BaseModel):
     full_name: str
 
     model_config = {"from_attributes": True}
+
+
+class SafetyEngineerTelegramResponse(BaseModel):
+    telegram_id: int
+    full_name: str
+
+    model_config = {"from_attributes": True}

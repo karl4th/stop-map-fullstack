@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.user import User, UserStatus
+from app.models.user import User, UserRole, UserStatus
 from app.repositories.user import UserRepository
 from app.routers.deps import require_admin
 from app.schemas.user import AssignRoleRequest, UserResponse
@@ -18,15 +18,26 @@ def _service(db: AsyncSession = Depends(get_db)) -> UserService:
 @router.get("", response_model=list[UserResponse])
 async def list_users(
     section_id: int | None = Query(None),
+    role: UserRole | None = Query(None),
     status: UserStatus | None = Query(None),
+    search: str | None = Query(None, description="Поиск по имени или номеру телефона"),
     svc: UserService = Depends(_service),
     _: User = Depends(require_admin),
 ):
     users = await svc.get_all()
     if section_id is not None:
         users = [u for u in users if u.section_id == section_id]
+    if role is not None:
+        users = [u for u in users if u.role == role]
     if status is not None:
         users = [u for u in users if u.status == status]
+    if search:
+        q = search.lower()
+        users = [
+            u for u in users
+            if q in u.full_name.lower()
+            or (u.phone and q in u.phone.lower())
+        ]
     return users
 
 

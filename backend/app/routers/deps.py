@@ -39,6 +39,18 @@ async def require_manager_or_admin(user: User = Depends(get_current_user)) -> Us
     return user
 
 
+async def require_safety_engineer(user: User = Depends(get_current_user)) -> User:
+    if user.role != UserRole.safety_engineer:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    return user
+
+
+async def require_safety_engineer_or_admin(user: User = Depends(get_current_user)) -> User:
+    if user.role not in (UserRole.safety_engineer, UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    return user
+
+
 async def verify_bot_token(x_bot_token: str = Header(...)) -> None:
     if x_bot_token != settings.TELEGRAM_BOT_TOKEN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Неверный токен бота")

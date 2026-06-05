@@ -35,6 +35,15 @@ class UserRepository(BaseRepository[User]):
         )
         return list(result.scalars().all())
 
+    async def get_safety_engineers(self) -> list[User]:
+        result = await self.db.execute(
+            select(User).where(
+                User.role == UserRole.safety_engineer,
+                User.status == UserStatus.active,
+            )
+        )
+        return list(result.scalars().all())
+
     async def get_pending_by_section(self, section_id: int) -> list[User]:
         result = await self.db.execute(
             select(User).where(
@@ -58,4 +67,3 @@ class UserRepository(BaseRepository[User]):
         await self.db.flush()
         await self.db.refresh(user)
         return user
-

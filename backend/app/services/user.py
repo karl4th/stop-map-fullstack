@@ -32,7 +32,7 @@ class UserService:
         return await self.repo.update_status(user_id, UserStatus.active)
 
     async def block(self, user_id: int) -> User:
-        await self.get_by_id(user_id)  # raises ValueError if not found
+        await self.get_by_id(user_id)
         return await self.repo.update_status(user_id, UserStatus.blocked)
 
     async def assign_role(
@@ -44,9 +44,9 @@ class UserService:
     ) -> User:
         user = await self.get_by_id(user_id)
         user.role = role
-        if role in (UserRole.manager, UserRole.admin):
+        if role in (UserRole.manager, UserRole.safety_engineer, UserRole.admin):
             if not password:
-                raise ValueError("Для роли менеджера/администратора необходимо задать пароль")
+                raise ValueError("Для данной роли необходимо задать пароль")
             user.hashed_password = hash_password(password)
         if section_id is not None:
             user.section_id = section_id

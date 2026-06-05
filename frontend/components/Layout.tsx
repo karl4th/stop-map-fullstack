@@ -46,6 +46,16 @@ const managerNav = [
   { href: "/stop-cards", label: "Стоп-карты", Icon: ShieldAlertIcon },
 ];
 
+const safetyEngineerNav = [
+  { href: "/stop-cards", label: "Стоп-карты", Icon: ShieldAlertIcon },
+];
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Администратор",
+  manager: "Менеджер",
+  safety_engineer: "Инженер ОТ и ТБ",
+};
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -53,8 +63,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { setRole(getRole()); }, []);
 
-  const nav = role === "admin" ? adminNav : managerNav;
-  const roleLabel = role === "admin" ? "Администратор" : "Менеджер";
+  const nav =
+    role === "admin" ? adminNav :
+    role === "safety_engineer" ? safetyEngineerNav :
+    managerNav;
+
+  const roleLabel = ROLE_LABELS[role ?? ""] ?? "Пользователь";
 
   function logout() {
     localStorage.removeItem("token");

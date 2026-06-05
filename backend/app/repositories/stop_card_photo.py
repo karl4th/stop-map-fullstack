@@ -13,9 +13,14 @@ class StopCardPhotoRepository(BaseRepository[StopCardPhoto]):
         )
         return list(result.scalars().all())
 
-    async def create_many(self, stop_card_id: int, minio_keys: list[str]) -> list[StopCardPhoto]:
+    async def create_many(
+        self,
+        stop_card_id: int,
+        minio_keys: list[str],
+        photo_type: str = "before",
+    ) -> list[StopCardPhoto]:
         photos = [
-            StopCardPhoto(stop_card_id=stop_card_id, minio_key=key)
+            StopCardPhoto(stop_card_id=stop_card_id, minio_key=key, photo_type=photo_type)
             for key in minio_keys
         ]
         self.db.add_all(photos)

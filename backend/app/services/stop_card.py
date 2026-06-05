@@ -1,7 +1,13 @@
+from datetime import datetime, timezone
+
 from app.models.stop_card import StopCard, StopCardStatus
 from app.repositories.stop_card import StopCardRepository
 from app.repositories.stop_card_photo import StopCardPhotoRepository
 from app.repositories.user import UserRepository
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class StopCardService:
@@ -28,10 +34,10 @@ class StopCardService:
             violator_name=violator_name,
             section_id=section_id,
             description=description,
-            status=StopCardStatus.issued,
+            status=StopCardStatus.created,
         )
         if minio_keys:
-            await self.photo_repo.create_many(card.id, minio_keys)
+            await self.photo_repo.create_many(card.id, minio_keys, photo_type="before")
         return await self.repo.get_with_photos(card.id)
 
     async def get_by_id(self, stop_card_id: int) -> StopCard:
@@ -49,29 +55,125 @@ class StopCardService:
     async def get_by_month(self, year: int, month: int) -> list[StopCard]:
         return await self.repo.get_by_month(year, month)
 
-    async def acknowledge(self, stop_card_id: int) -> StopCard:
-        card = await self.get_by_id(stop_card_id)  # 1 fetch with photos
-        if card.status != StopCardStatus.issued:
-            raise ValueError("Стоп-карта уже обработана")
-        card.status = StopCardStatus.acknowledged
+    async def get_for_safety_check(self) -> list[StopCard]:
+        return await self.repo.get_by_status(StopCardStatus.safety_check)
+
+    # ─── Менеджер: принять карту ────────────────────────────────────────────
+
+    async def acknowledge(self, stop_card_id: int, manager_id: int) -> StopCard:
+        card = await self.get_by_id(stop_card_id)
+        if card.status != StopCardStatus.created:
+            raise ValueError("Можно принять только только что созданную карту")
+        card.status = StopCardStatus.under_review
+        card.acknowledged_by_id = manager_id
+        card.acknowledged_at = _now()
         await self.repo.db.flush()
-        return await self.repo.get_with_photos(stop_card_id)  # reload with updated_at
+        self.repo.db.expire_all()
+        return await self.repo.get_with_photos(stop_card_id)
+
+    # ─── Менеджер: загрузить устранение (фото после + описание) ─────────────
+
+    async def submit_fix(
+        self,
+        stop_card_id: int,
+        manager_id: int,
+        fix_description: str,
+        after_minio_keys: list[str],
+    ) -> StopCard:
+        card = await self.get_by_id(stop_card_id)
+        if card.status not in (StopCardStatus.under_review, StopCardStatus.in_progress):
+            raise ValueError("Нельзя загрузить устранение на данном этапе")
+        card.status = StopCardStatus.safety_check
+        card.fixed_by_id = manager_id
+        card.fixed_at = _now()
+        card.fix_description = fix_description
+        if after_minio_keys:
+            await self.photo_repo.create_many(stop_card_id, after_minio_keys, photo_type="after")
+        await self.repo.db.flush()
+        self.repo.db.expire_all()
+        return await self.repo.get_with_photos(stop_card_id)
+
+    # ─── Инженер ОТ и ТБ: разрешить ─────────────────────────────────────────
+
+    async def safety_approve(
+        self,
+        stop_card_id: int,
+        engineer_id: int,
+        note: str | None,
+    ) -> StopCard:
+        card = await self.get_by_id(stop_card_id)
+        if card.status != StopCardStatus.safety_check:
+            raise ValueError("Карта не находится на проверке ОТ и ТБ")
+        card.status = StopCardStatus.approved
+        card.safety_checked_by_id = engineer_id
+        card.safety_checked_at = _now()
+        card.safety_note = note
+        card.closed_at = _now()
+        await self.repo.db.flush()
+        self.repo.db.expire_all()
+        return await self.repo.get_with_photos(stop_card_id)
+
+    # ─── Инженер ОТ и ТБ: запретить ─────────────────────────────────────────
+
+    async def safety_reject(
+        self,
+        stop_card_id: int,
+        engineer_id: int,
+        note: str | None,
+    ) -> StopCard:
+        card = await self.get_by_id(stop_card_id)
+        if card.status != StopCardStatus.safety_check:
+            raise ValueError("Карта не находится на проверке ОТ и ТБ")
+        card.status = StopCardStatus.rejected
+        card.safety_checked_by_id = engineer_id
+        card.safety_checked_at = _now()
+        card.safety_note = note
+        await self.repo.db.flush()
+        self.repo.db.expire_all()
+        return await self.repo.get_with_photos(stop_card_id)
+
+    # ─── Инженер ОТ и ТБ: на доработку ──────────────────────────────────────
+
+    async def safety_revision(
+        self,
+        stop_card_id: int,
+        engineer_id: int,
+        note: str | None,
+    ) -> StopCard:
+        card = await self.get_by_id(stop_card_id)
+        if card.status != StopCardStatus.safety_check:
+            raise ValueError("Карта не находится на проверке ОТ и ТБ")
+        card.status = StopCardStatus.in_progress
+        card.safety_checked_by_id = engineer_id
+        card.safety_checked_at = _now()
+        card.safety_note = note
+        # Сбрасываем данные предыдущего устранения для повторной попытки
+        card.fixed_by_id = None
+        card.fixed_at = None
+        card.fix_description = None
+        await self.repo.db.flush()
+        self.repo.db.expire_all()
+        return await self.repo.get_with_photos(stop_card_id)
+
+    # ─── Администратор: закрыть ──────────────────────────────────────────────
 
     async def close(self, stop_card_id: int) -> StopCard:
         card = await self.get_by_id(stop_card_id)
+        if card.status != StopCardStatus.approved:
+            raise ValueError("Закрыть можно только одобренную карту")
         card.status = StopCardStatus.closed
+        card.closed_at = _now()
         await self.repo.db.flush()
+        self.repo.db.expire_all()
         return await self.repo.get_with_photos(stop_card_id)
 
-    async def dispute(self, stop_card_id: int, reason: str) -> StopCard:
-        card = await self.get_by_id(stop_card_id)
-        card.status = StopCardStatus.disputed
-        card.dispute_reason = reason
-        await self.repo.db.flush()
-        return await self.repo.get_with_photos(stop_card_id)
+    # ─── Вспомогательные ─────────────────────────────────────────────────────
 
     async def get_managers_for_card(self, stop_card_id: int) -> list:
-        card = await self.repo.get_by_id(stop_card_id)
+        card = await self.repo.get_with_photos(stop_card_id)
         if card is None:
             return []
         return await self.user_repo.get_managers_by_section(card.section_id)
+
+    async def get_safety_engineers(self) -> list:
+        return await self.user_repo.get_safety_engineers()
