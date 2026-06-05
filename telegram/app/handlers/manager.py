@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.core import api
+from app.core.photos import send_card_photos
 from app.keyboards.inline import engineer_decision_keyboard, manager_fix_keyboard
 from app.keyboards.reply import cancel_keyboard, fix_done_keyboard, main_menu, remove
 from app.states.manager_fix import ManagerFix
@@ -108,10 +109,20 @@ async def fix_submit(message: Message, state: FSMContext, bot: Bot):
 
         # Уведомляем всех инженеров ОТ и ТБ
         engineers = await api.get_safety_engineers()
+        before_photos = [p for p in card.get("photos", []) if p.get("photo_type") == "before"]
+        after_photos  = [p for p in card.get("photos", []) if p.get("photo_type") == "after"]
+
         for eng in engineers:
             if not eng.get("telegram_id"):
                 continue
             try:
+                # Фото ДО
+                if before_photos:
+                    await send_card_photos(bot, eng["telegram_id"], before_photos, "📸 Фото нарушения (ДО)")
+                # Фото ПОСЛЕ
+                if after_photos:
+                    await send_card_photos(bot, eng["telegram_id"], after_photos, "📸 Фото устранения (ПОСЛЕ)")
+                # Текст + кнопки
                 await bot.send_message(
                     chat_id=eng["telegram_id"],
                     text=(

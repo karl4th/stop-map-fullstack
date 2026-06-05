@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
 
 from app.core.config import settings
+from app.handlers.cards_list import router as cards_list_router
 from app.handlers.engineer import router as engineer_router
 from app.handlers.manager import router as manager_router
 from app.handlers.start import router as start_router
@@ -22,6 +23,7 @@ async def main():
     dp.include_router(stop_card_router)
     dp.include_router(manager_router)
     dp.include_router(engineer_router)
+    dp.include_router(cards_list_router)
 
     logging.info("Bot started")
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

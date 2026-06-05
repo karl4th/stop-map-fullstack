@@ -1,10 +1,11 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.minio import upload_file
+from app.core.minio import get_file as minio_get_file, upload_file
 from app.models.user import UserRole
 from app.repositories.stop_card import StopCardRepository
 from app.repositories.stop_card_photo import StopCardPhotoRepository
@@ -167,6 +168,18 @@ async def bot_engineer_decision(
 
 # ── Вспомогательные ──────────────────────────────────────────────────────────
 
+@router.get("/stop-cards/{stop_card_id}", response_model=StopCardResponse)
+async def get_stop_card(
+    stop_card_id: int,
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    try:
+        return await svc.get_by_id(stop_card_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
 @router.get("/stop-cards/my/{telegram_id}", response_model=list[StopCardResponse])
 async def my_stop_cards(
     telegram_id: int,
@@ -177,6 +190,47 @@ async def my_stop_cards(
     if reporter is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
     return await svc.get_by_reporter(reporter.id)
+
+
+@router.get("/stop-cards/for-manager/{telegram_id}", response_model=list[StopCardResponse])
+async def cards_for_manager(
+    telegram_id: int,
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    manager = await svc.user_repo.get_by_telegram_id(telegram_id)
+    if manager is None or manager.role not in (UserRole.manager, UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
+    all_cards = await svc.repo.get_all()
+    return [
+        c for c in all_cards
+        if c.section_id == manager.section_id
+        and c.status.value in ("created", "under_review", "in_progress", "safety_check")
+    ]
+
+
+@router.get("/stop-cards/for-engineer", response_model=list[StopCardResponse])
+async def cards_for_engineer(
+    telegram_id: int,
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    engineer = await svc.user_repo.get_by_telegram_id(telegram_id)
+    if engineer is None or engineer.role not in (UserRole.safety_engineer, UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
+    return await svc.get_for_safety_check()
+
+
+@router.get("/photos/{minio_key:path}")
+async def get_photo(
+    minio_key: str,
+    _: None = Depends(verify_bot_token),
+):
+    try:
+        data, content_type = await minio_get_file(minio_key)
+        return Response(content=data, media_type=content_type)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @router.get("/sections/{section_id}/managers", response_model=list[ManagerTelegramResponse])

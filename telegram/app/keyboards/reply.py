@@ -13,6 +13,26 @@ def main_menu() -> ReplyKeyboardMarkup:
     )
 
 
+def manager_menu() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🚨 Требуют принятия")],
+            [KeyboardButton(text="🔧 Требуют устранения")],
+            [KeyboardButton(text="📂 Все активные карты")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def engineer_menu() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🔍 На проверке ОТ и ТБ")],
+        ],
+        resize_keyboard=True,
+    )
+
+
 def phone_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],

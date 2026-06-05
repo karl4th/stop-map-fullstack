@@ -103,6 +103,47 @@ async def bot_fix(card_id: int, telegram_id: int, fix_description: str, photos: 
         return r.json()
 
 
+async def get_photo_bytes(minio_key: str) -> bytes:
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(
+            f"{settings.BACKEND_URL}/bot/photos/{minio_key}",
+            headers=_headers,
+        )
+        r.raise_for_status()
+        return r.content
+
+
+async def get_card(card_id: int) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            f"{settings.BACKEND_URL}/bot/stop-cards/{card_id}",
+            headers=_headers,
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+async def get_cards_for_manager(telegram_id: int) -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            f"{settings.BACKEND_URL}/bot/stop-cards/for-manager/{telegram_id}",
+            headers=_headers,
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+async def get_cards_for_engineer(telegram_id: int) -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            f"{settings.BACKEND_URL}/bot/stop-cards/for-engineer",
+            headers=_headers,
+            params={"telegram_id": telegram_id},
+        )
+        r.raise_for_status()
+        return r.json()
+
+
 async def bot_engineer(card_id: int, telegram_id: int, action: str, note: str | None) -> dict:
     async with httpx.AsyncClient() as client:
         r = await client.patch(
