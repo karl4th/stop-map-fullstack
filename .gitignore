@@ -2,6 +2,9 @@
 .env
 !.env.example
 
+# Local docs (not for repo)
+up.md
+
 # Python
 __pycache__/
 *.py[cod]

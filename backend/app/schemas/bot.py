@@ -27,3 +27,13 @@ class SafetyEngineerTelegramResponse(BaseModel):
     full_name: str
 
     model_config = {"from_attributes": True}
+
+
+class BotManagerActionRequest(BaseModel):
+    telegram_id: int
+
+
+class BotEngineerDecisionRequest(BaseModel):
+    telegram_id: int
+    action: str  # "approve" | "reject" | "revision"
+    note: str | None = None

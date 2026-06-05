@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 _photo_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 from app.core import api
-from app.keyboards.inline import sections_keyboard
+from app.keyboards.inline import manager_new_card_keyboard, sections_keyboard
 from app.keyboards.reply import cancel_keyboard, done_keyboard, main_menu, remove
 from app.states.stop_card import StopCard
 
@@ -31,7 +31,11 @@ STATUS_LABELS = {
 async def _check_active(message: Message) -> bool:
     user = await api.get_user(message.from_user.id)
     if not user or user["status"] != "active":
-        await message.answer("❌ У вас нет доступа. Напишите /start для регистрации.", reply_markup=remove)
+        await message.answer(
+            "❌ У вас нет доступа.\n\nЕсли вы не регистрировались — напишите /start\n"
+            "Если уже регистрировались — ожидайте подтверждения от менеджера.",
+            reply_markup=remove,
+        )
         return False
     return True
 
@@ -42,7 +46,7 @@ async def start_stop_card(message: Message, state: FSMContext):
         return
     await state.set_state(StopCard.waiting_violator)
     await message.answer(
-        "📝 Введите ФИО нарушителя:",
+        "📝 Введите ФИО нарушителя (или кратко опишите кто нарушил):",
         reply_markup=cancel_keyboard(),
     )
 
@@ -57,7 +61,10 @@ async def got_violator(message: Message, state: FSMContext):
     await state.update_data(violator_name=message.text.strip())
     sections = await api.get_sections()
     await state.set_state(StopCard.waiting_section)
-    await message.answer("🏭 Выберите участок где произошло нарушение:", reply_markup=sections_keyboard(sections))
+    await message.answer(
+        "🏭 Выберите участок, где произошло нарушение:",
+        reply_markup=sections_keyboard(sections),
+    )
 
 
 @router.callback_query(StopCard.waiting_section, F.data.startswith("section:"))
@@ -67,7 +74,7 @@ async def got_section(callback: CallbackQuery, state: FSMContext):
     await state.set_state(StopCard.waiting_description)
     await callback.message.edit_reply_markup()
     await callback.message.answer(
-        "📄 Опишите ситуацию (что произошло, какое нарушение):",
+        "📄 Опишите нарушение (что произошло, какая опасность):",
         reply_markup=cancel_keyboard(),
     )
 
@@ -82,7 +89,7 @@ async def got_description(message: Message, state: FSMContext):
     await state.update_data(description=message.text.strip(), photo_ids=[])
     await state.set_state(StopCard.waiting_photos)
     await message.answer(
-        "📸 Отправьте фото опасного момента (можно несколько).\n"
+        "📸 Отправьте фото опасного места (можно несколько).\n"
         "Когда закончите — нажмите кнопку ниже.",
         reply_markup=done_keyboard(),
     )
@@ -95,7 +102,7 @@ async def got_photo(message: Message, state: FSMContext):
         photo_ids = data.get("photo_ids", [])
         photo_ids.append(message.photo[-1].file_id)
         await state.update_data(photo_ids=photo_ids)
-    await message.answer(f"✅ Фото {len(photo_ids)} принято. Отправьте ещё или нажмите «Готово».")
+    await message.answer(f"✅ Фото {len(photo_ids)} принято. Ещё или нажмите «Готово».")
 
 
 @router.message(StopCard.waiting_photos, F.text == "✅ Готово — отправить карту")
@@ -123,10 +130,12 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
             await api.upload_photos(card["id"], photos)
 
         await message.answer(
-            f"✅ Стоп-карта #{card['id']} создана!\n\n"
+            f"✅ <b>Стоп-карта #{card['id']} создана!</b>\n\n"
             f"👤 Нарушитель: {data['violator_name']}\n"
-            f"📄 Описание: {data['description']}\n"
-            f"📸 Фото: {len(photo_ids)} шт.",
+            f"📄 {data['description']}\n"
+            f"📸 Фото: {len(photo_ids)} шт.\n\n"
+            f"Карта отправлена менеджеру участка.",
+            parse_mode="HTML",
             reply_markup=main_menu(),
         )
 
@@ -134,44 +143,46 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
         managers = await api.get_managers(data["section_id"])
         for manager in managers:
             try:
-                await bot.send_message(
-                    chat_id=manager["telegram_id"],
-                    text=(
-                        f"🚨 Новая стоп-карта #{card['id']}\n\n"
-                        f"👤 Нарушитель: {data['violator_name']}\n"
-                        f"📄 {data['description']}\n\n"
-                        f"Войдите в панель управления для рассмотрения."
-                    ),
-                )
+                # Сначала фото если есть
                 if photo_ids:
                     await bot.send_media_group(
                         chat_id=manager["telegram_id"],
                         media=[InputMediaPhoto(media=fid) for fid in photo_ids],
                     )
-            except Exception as notify_err:
-                logger.warning(
-                    "Failed to notify manager %s for card #%s: %s",
-                    manager["telegram_id"], card["id"], notify_err,
-                )
-
-        # Уведомляем всех инженеров ОТ и ТБ (копия)
-        engineers = await api.get_safety_engineers()
-        for engineer in engineers:
-            try:
+                # Текст + кнопка "Принять"
                 await bot.send_message(
-                    chat_id=engineer["telegram_id"],
+                    chat_id=manager["telegram_id"],
                     text=(
-                        f"📋 Копия стоп-карты #{card['id']}\n\n"
+                        f"🚨 <b>Новая стоп-карта #{card['id']}</b>\n\n"
                         f"👤 Нарушитель: {data['violator_name']}\n"
                         f"📄 {data['description']}\n\n"
-                        f"Карта передана менеджеру участка на рассмотрение."
+                        f"Нажмите кнопку чтобы принять карту и остановить работы."
                     ),
+                    parse_mode="HTML",
+                    reply_markup=manager_new_card_keyboard(card["id"]),
                 )
-            except Exception as notify_err:
-                logger.warning(
-                    "Failed to notify safety engineer %s for card #%s: %s",
-                    engineer["telegram_id"], card["id"], notify_err,
+            except Exception as e:
+                logger.warning("Failed to notify manager %s: %s", manager["telegram_id"], e)
+
+        # Уведомляем инженеров ОТ и ТБ (информационная копия)
+        engineers = await api.get_safety_engineers()
+        for eng in engineers:
+            if not eng.get("telegram_id"):
+                continue
+            try:
+                await bot.send_message(
+                    chat_id=eng["telegram_id"],
+                    text=(
+                        f"📋 <b>Копия стоп-карты #{card['id']}</b>\n\n"
+                        f"👤 Нарушитель: {data['violator_name']}\n"
+                        f"📄 {data['description']}\n\n"
+                        f"Карта передана менеджеру участка. Вы получите уведомление "
+                        f"когда нарушение будет устранено."
+                    ),
+                    parse_mode="HTML",
                 )
+            except Exception as e:
+                logger.warning("Failed to notify engineer %s: %s", eng["telegram_id"], e)
 
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}", reply_markup=main_menu())
@@ -196,9 +207,10 @@ async def my_cards(message: Message):
     for c in cards[:10]:
         status = STATUS_LABELS.get(c["status"], c["status"])
         date = c["created_at"][:10]
-        lines.append(f"#{c['id']} | {date} | {c['violator_name']} | {status}")
+        lines.append(f"#{c['id']} · {date}\n   {c['violator_name']}\n   {status}")
 
     await message.answer(
-        "📂 Ваши стоп-карты:\n\n" + "\n".join(lines),
+        "📂 <b>Ваши стоп-карты:</b>\n\n" + "\n\n".join(lines),
+        parse_mode="HTML",
         reply_markup=main_menu(),
     )

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.telegram import notify
 from app.models.user import User, UserRole, UserStatus
 from app.repositories.user import UserRepository
 from app.routers.deps import require_admin
@@ -20,7 +21,7 @@ async def list_users(
     section_id: int | None = Query(None),
     role: UserRole | None = Query(None),
     status: UserStatus | None = Query(None),
-    search: str | None = Query(None, description="Поиск по имени или номеру телефона"),
+    search: str | None = Query(None),
     svc: UserService = Depends(_service),
     _: User = Depends(require_admin),
 ):
@@ -35,8 +36,7 @@ async def list_users(
         q = search.lower()
         users = [
             u for u in users
-            if q in u.full_name.lower()
-            or (u.phone and q in u.phone.lower())
+            if q in u.full_name.lower() or (u.phone and q in u.phone.lower())
         ]
     return users
 
@@ -56,9 +56,15 @@ async def approve_user(
     _: User = Depends(require_admin),
 ):
     try:
-        return await svc.approve(user_id)
+        user = await svc.approve(user_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if user.telegram_id:
+        await notify(
+            user.telegram_id,
+            "✅ <b>Вас одобрили!</b>\n\nТеперь вы можете создавать стоп-карты.\n\nНажмите /start",
+        )
+    return user
 
 
 @router.patch("/{user_id}/block", response_model=UserResponse)

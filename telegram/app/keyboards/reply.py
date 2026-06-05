@@ -29,6 +29,22 @@ def done_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def fix_done_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="✅ Готово — отправить на проверку")]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def skip_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="➡️ Пропустить")]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
 def cancel_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="❌ Отмена")]],

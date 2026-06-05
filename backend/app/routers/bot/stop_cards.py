@@ -1,15 +1,22 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.minio import upload_file
+from app.models.user import UserRole
 from app.repositories.stop_card import StopCardRepository
 from app.repositories.stop_card_photo import StopCardPhotoRepository
 from app.repositories.user import UserRepository
 from app.routers.deps import verify_bot_token
-from app.schemas.bot import BotStopCardRequest, ManagerTelegramResponse, SafetyEngineerTelegramResponse
+from app.schemas.bot import (
+    BotEngineerDecisionRequest,
+    BotManagerActionRequest,
+    BotStopCardRequest,
+    ManagerTelegramResponse,
+    SafetyEngineerTelegramResponse,
+)
 from app.schemas.stop_card import StopCardResponse
 from app.services.stop_card import StopCardService
 
@@ -25,6 +32,8 @@ def _service(db: AsyncSession = Depends(get_db)) -> StopCardService:
         UserRepository(db),
     )
 
+
+# ── Создать стоп-карту ────────────────────────────────────────────────────────
 
 @router.post("/stop-cards", response_model=StopCardResponse, status_code=status.HTTP_201_CREATED)
 async def create_stop_card(
@@ -46,6 +55,8 @@ async def create_stop_card(
         minio_keys=[],
     )
 
+
+# ── Загрузить фото к стоп-карте (фото ДО от работника) ───────────────────────
 
 @router.post("/stop-cards/{stop_card_id}/photos", response_model=StopCardResponse)
 async def upload_photos(
@@ -75,6 +86,86 @@ async def upload_photos(
     await svc.photo_repo.create_many(stop_card_id, list(keys), photo_type="before")
     return await svc.get_by_id(stop_card_id)
 
+
+# ── Менеджер: принять стоп-карту ─────────────────────────────────────────────
+
+@router.patch("/stop-cards/{stop_card_id}/bot-acknowledge", response_model=StopCardResponse)
+async def bot_acknowledge(
+    stop_card_id: int,
+    body: BotManagerActionRequest,
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    manager = await svc.user_repo.get_by_telegram_id(body.telegram_id)
+    if manager is None or manager.role not in (UserRole.manager, UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
+    try:
+        return await svc.acknowledge(stop_card_id, manager.id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# ── Менеджер: загрузить устранение (фото ПОСЛЕ + описание) ───────────────────
+
+@router.post("/stop-cards/{stop_card_id}/bot-fix", response_model=StopCardResponse)
+async def bot_fix(
+    stop_card_id: int,
+    telegram_id: int = Form(...),
+    fix_description: str = Form(...),
+    photos: list[UploadFile] = File(default=[]),
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    manager = await svc.user_repo.get_by_telegram_id(telegram_id)
+    if manager is None or manager.role not in (UserRole.manager, UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
+
+    for photo in photos:
+        if photo.content_type not in ALLOWED_CONTENT_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Неподдерживаемый тип файла: {photo.content_type}",
+            )
+
+    async def _upload(p: UploadFile) -> str:
+        ext = p.content_type.split("/")[-1]
+        data = await p.read()
+        return await upload_file(data, p.content_type, ext)
+
+    after_keys = list(await asyncio.gather(*[_upload(p) for p in photos])) if photos else []
+
+    try:
+        return await svc.submit_fix(stop_card_id, manager.id, fix_description, after_keys)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# ── Инженер ОТ и ТБ: решение ─────────────────────────────────────────────────
+
+@router.patch("/stop-cards/{stop_card_id}/bot-engineer", response_model=StopCardResponse)
+async def bot_engineer_decision(
+    stop_card_id: int,
+    body: BotEngineerDecisionRequest,
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    engineer = await svc.user_repo.get_by_telegram_id(body.telegram_id)
+    if engineer is None or engineer.role not in (UserRole.safety_engineer, UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
+    try:
+        if body.action == "approve":
+            return await svc.safety_approve(stop_card_id, engineer.id, body.note)
+        elif body.action == "reject":
+            return await svc.safety_reject(stop_card_id, engineer.id, body.note)
+        elif body.action == "revision":
+            return await svc.safety_revision(stop_card_id, engineer.id, body.note)
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неизвестное действие")
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# ── Вспомогательные ──────────────────────────────────────────────────────────
 
 @router.get("/stop-cards/my/{telegram_id}", response_model=list[StopCardResponse])
 async def my_stop_cards(

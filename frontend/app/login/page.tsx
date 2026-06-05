@@ -25,24 +25,26 @@ const SpinnerIcon = () => (
   </svg>
 );
 
-function maskPhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "").replace(/^[78]/, "").slice(0, 10);
-  let r = "+7";
-  if (digits.length > 0) r += " (" + digits.slice(0, 3);
-  if (digits.length >= 3) r += ") " + digits.slice(3, 6);
-  if (digits.length >= 6) r += "-" + digits.slice(6, 8);
-  if (digits.length >= 8) r += "-" + digits.slice(8, 10);
-  return r;
+function formatPhone(d: string): string {
+  if (!d) return "";
+  let r = "+7 (";
+  if (d.length <= 3) return r + d;
+  r += d.slice(0, 3) + ") ";
+  if (d.length <= 6) return r + d.slice(3);
+  r += d.slice(3, 6) + "-";
+  if (d.length <= 8) return r + d.slice(6);
+  return r + d.slice(6, 8) + "-" + d.slice(8);
 }
 
-function rawPhone(masked: string): string {
-  const digits = masked.replace(/\D/g, "");
-  return "+" + (digits.startsWith("7") ? digits : "7" + digits);
+function extractDigits(value: string): string {
+  const raw = value.replace(/\D/g, "");
+  const clean = raw.length > 10 && /^[78]/.test(raw) ? raw.slice(1) : raw;
+  return clean.slice(0, 10);
 }
 
 export default function LoginPage() {
   const router = useRouter();
-  const [phone, setPhone] = useState("+7");
+  const [digits, setDigits] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -53,7 +55,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const data = await api.post<{ access_token: string }>("/admin/auth/login", { phone: rawPhone(phone), password });
+      const data = await api.post<{ access_token: string }>("/admin/auth/login", { phone: "+7" + digits, password });
       const role = decodeRole(data.access_token);
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", role);
@@ -176,8 +178,14 @@ export default function LoginPage() {
               </label>
               <input
                 type="tel"
-                value={phone}
-                onChange={(e) => setPhone(maskPhone(e.target.value))}
+                value={formatPhone(digits)}
+                onChange={(e) => setDigits(extractDigits(e.target.value))}
+                onKeyDown={(e) => {
+                  if (e.key === "Backspace") {
+                    e.preventDefault();
+                    setDigits(prev => prev.slice(0, -1));
+                  }
+                }}
                 placeholder="+7 (___) ___-__-__"
                 required
                 style={inputStyle}
