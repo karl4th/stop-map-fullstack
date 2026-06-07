@@ -111,7 +111,7 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     await state.clear()
 
-    await message.answer("⏳ Отправляем стоп-карту...", reply_markup=remove)
+    await message.answer("⏳ Отправляем стоп-карту...")
 
     try:
         card = await api.create_stop_card(
