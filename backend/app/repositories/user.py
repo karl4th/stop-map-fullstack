@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.user import User, UserRole, UserStatus
 from app.repositories.base import BaseRepository
@@ -56,6 +56,12 @@ class UserRepository(BaseRepository[User]):
     async def get_pending_all(self) -> list[User]:
         result = await self.db.execute(
             select(User).where(User.status == UserStatus.pending)
+        )
+        return list(result.scalars().all())
+
+    async def find_by_full_name(self, full_name: str) -> list[User]:
+        result = await self.db.execute(
+            select(User).where(func.lower(User.full_name) == full_name.lower().strip())
         )
         return list(result.scalars().all())
 

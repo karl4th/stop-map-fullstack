@@ -37,3 +37,7 @@ class BotEngineerDecisionRequest(BaseModel):
     telegram_id: int
     action: str  # "approve" | "reject" | "revision"
     note: str | None = None
+
+
+class BotUserApprovalRequest(BaseModel):
+    manager_telegram_id: int

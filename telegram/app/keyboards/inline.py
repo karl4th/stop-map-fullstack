@@ -22,6 +22,19 @@ def manager_fix_keyboard(card_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
+def user_approval_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Одобрить", callback_data=f"uapprove:{user_id}"),
+        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"ureject:{user_id}"),
+    ]])
+
+
+def violator_accept_keyboard(card_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Принимаю — остановлю работы", callback_data=f"ack:{card_id}"),
+    ]])
+
+
 def engineer_decision_keyboard(card_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Разрешить", callback_data=f"se_ok:{card_id}"),

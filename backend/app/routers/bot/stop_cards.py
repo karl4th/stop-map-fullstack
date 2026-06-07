@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.minio import get_file as minio_get_file, upload_file
+from app.core.telegram import notify
 from app.models.user import UserRole
 from app.repositories.stop_card import StopCardRepository
 from app.repositories.stop_card_photo import StopCardPhotoRepository
@@ -97,13 +98,25 @@ async def bot_acknowledge(
     svc: StopCardService = Depends(_service),
     _: None = Depends(verify_bot_token),
 ):
-    manager = await svc.user_repo.get_by_telegram_id(body.telegram_id)
-    if manager is None or manager.role not in (UserRole.manager, UserRole.admin):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
+    actor = await svc.user_repo.get_by_telegram_id(body.telegram_id)
+    if actor is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Пользователь не найден")
     try:
-        return await svc.acknowledge(stop_card_id, manager.id)
+        card = await svc.acknowledge(stop_card_id, actor.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    # Уведомляем репортёра что карта принята
+    reporter = await svc.user_repo.get_by_id(card.reporter_id)
+    if reporter and reporter.telegram_id:
+        who = actor.full_name
+        await notify(
+            reporter.telegram_id,
+            f"📋 <b>Стоп-карта #{card.id} принята</b>\n\n"
+            f"✅ {who} принял карту — работы остановлены.\n"
+            f"Нарушение будет устранено.",
+        )
+    return card
 
 
 # ── Менеджер: загрузить устранение (фото ПОСЛЕ + описание) ───────────────────

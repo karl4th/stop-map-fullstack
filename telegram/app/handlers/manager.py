@@ -8,8 +8,8 @@ from aiogram.types import CallbackQuery, Message
 
 from app.core import api
 from app.core.photos import send_card_photos
-from app.keyboards.inline import engineer_decision_keyboard, manager_fix_keyboard
-from app.keyboards.reply import cancel_keyboard, fix_done_keyboard, main_menu, remove
+from app.keyboards.inline import engineer_decision_keyboard, manager_fix_keyboard, user_approval_keyboard
+from app.keyboards.reply import cancel_keyboard, fix_done_keyboard, manager_menu, remove
 from app.states.manager_fix import ManagerFix
 
 logger = logging.getLogger(__name__)
@@ -145,3 +145,29 @@ async def fix_submit(message: Message, state: FSMContext, bot: Bot):
 @router.message(ManagerFix.waiting_photos)
 async def fix_wrong_input(message: Message):
     await message.answer("Отправьте фото или нажмите «Готово».")
+
+
+# ── Менеджер одобряет / отклоняет нового сотрудника ──────────────────────────
+
+@router.callback_query(F.data.startswith("uapprove:"))
+async def cb_approve_user(callback: CallbackQuery, bot: Bot):
+    user_id = int(callback.data.split(":")[1])
+    try:
+        user = await api.approve_user(user_id, callback.from_user.id)
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer(f"✅ {user['full_name']} одобрен. Сотруднику отправлено уведомление.")
+        await callback.answer("Одобрено")
+    except Exception as e:
+        await callback.answer(f"❌ {e}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("ureject:"))
+async def cb_reject_user(callback: CallbackQuery, bot: Bot):
+    user_id = int(callback.data.split(":")[1])
+    try:
+        user = await api.reject_user(user_id, callback.from_user.id)
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer(f"❌ {user['full_name']} отклонён.")
+        await callback.answer("Отклонено")
+    except Exception as e:
+        await callback.answer(f"❌ {e}", show_alert=True)

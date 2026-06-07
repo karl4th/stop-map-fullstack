@@ -26,6 +26,8 @@ class StopCardResponse(BaseModel):
     reporter_id: int
     reporter: UserBriefResponse | None = None
     violator_name: str
+    violator_id: int | None = None
+    violator: UserBriefResponse | None = None
     section_id: int
     description: str
     status: StopCardStatus

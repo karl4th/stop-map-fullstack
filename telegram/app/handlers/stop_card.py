@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 _photo_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 from app.core import api
-from app.keyboards.inline import manager_new_card_keyboard, sections_keyboard
+from app.keyboards.inline import manager_new_card_keyboard, sections_keyboard, violator_accept_keyboard
 from app.keyboards.reply import cancel_keyboard, done_keyboard, main_menu, remove
 from app.states.stop_card import StopCard
 
@@ -139,22 +139,27 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
             reply_markup=main_menu(),
         )
 
+        # Статус нарушителя для уведомления
+        violator = card.get("violator")
+        if violator:
+            violator_line = f"👤 Нарушитель: {data['violator_name']} ✅ <i>(зарегистрирован)</i>"
+        else:
+            violator_line = f"👤 Нарушитель: {data['violator_name']} ⚠️ <i>(не зарегистрирован)</i>"
+
         # Уведомляем менеджеров участка
         managers = await api.get_managers(data["section_id"])
         for manager in managers:
             try:
-                # Сначала фото если есть
                 if photo_ids:
                     await bot.send_media_group(
                         chat_id=manager["telegram_id"],
                         media=[InputMediaPhoto(media=fid) for fid in photo_ids],
                     )
-                # Текст + кнопка "Принять"
                 await bot.send_message(
                     chat_id=manager["telegram_id"],
                     text=(
                         f"🚨 <b>Новая стоп-карта #{card['id']}</b>\n\n"
-                        f"👤 Нарушитель: {data['violator_name']}\n"
+                        f"{violator_line}\n"
                         f"📄 {data['description']}\n\n"
                         f"Нажмите кнопку чтобы принять карту и остановить работы."
                     ),
@@ -163,6 +168,29 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
                 )
             except Exception as e:
                 logger.warning("Failed to notify manager %s: %s", manager["telegram_id"], e)
+
+        # Уведомляем самого нарушителя если он зарегистрирован
+        if violator and violator.get("id"):
+            try:
+                violator_user = await api.get_user_by_id(violator["id"])
+                if violator_user and violator_user.get("telegram_id"):
+                    if photo_ids:
+                        await bot.send_media_group(
+                            chat_id=violator_user["telegram_id"],
+                            media=[InputMediaPhoto(media=fid) for fid in photo_ids],
+                        )
+                    await bot.send_message(
+                        chat_id=violator_user["telegram_id"],
+                        text=(
+                            f"⚠️ <b>На вас создана стоп-карта #{card['id']}</b>\n\n"
+                            f"📄 {data['description']}\n\n"
+                            f"Нажмите кнопку чтобы принять — это подтвердит что вы остановили работы."
+                        ),
+                        parse_mode="HTML",
+                        reply_markup=violator_accept_keyboard(card["id"]),
+                    )
+            except Exception as e:
+                logger.warning("Failed to notify violator: %s", e)
 
         # Уведомляем инженеров ОТ и ТБ (информационная копия)
         engineers = await api.get_safety_engineers()

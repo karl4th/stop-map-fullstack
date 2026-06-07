@@ -29,9 +29,14 @@ class StopCardService:
         description: str,
         minio_keys: list[str],
     ) -> StopCard:
+        # Ищем нарушителя по ФИО (точное совпадение без учёта регистра)
+        matches = await self.user_repo.find_by_full_name(violator_name)
+        violator_id = matches[0].id if len(matches) == 1 else None
+
         card = await self.repo.create(
             reporter_id=reporter_id,
             violator_name=violator_name,
+            violator_id=violator_id,
             section_id=section_id,
             description=description,
             status=StopCardStatus.created,
@@ -60,12 +65,20 @@ class StopCardService:
 
     # ─── Менеджер: принять карту ────────────────────────────────────────────
 
-    async def acknowledge(self, stop_card_id: int, manager_id: int) -> StopCard:
+    async def acknowledge(self, stop_card_id: int, actor_id: int) -> StopCard:
         card = await self.get_by_id(stop_card_id)
         if card.status != StopCardStatus.created:
-            raise ValueError("Можно принять только только что созданную карту")
+            raise ValueError("Карта уже принята или обработана")
+        actor = await self.user_repo.get_by_id(actor_id)
+        if actor is None:
+            raise ValueError("Пользователь не найден")
+        # Принять может: менеджер/админ участка ИЛИ нарушитель (если он зарегистрирован)
+        is_manager = actor.role.value in ("manager", "admin")
+        is_violator = card.violator_id is not None and card.violator_id == actor_id
+        if not is_manager and not is_violator:
+            raise ValueError("Нет прав для принятия этой карты")
         card.status = StopCardStatus.under_review
-        card.acknowledged_by_id = manager_id
+        card.acknowledged_by_id = actor_id
         card.acknowledged_at = _now()
         await self.repo.db.flush()
         self.repo.db.expire_all()

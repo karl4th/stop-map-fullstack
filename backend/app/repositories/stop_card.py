@@ -12,6 +12,7 @@ class StopCardRepository(BaseRepository[StopCard]):
         return select(StopCard).options(
             selectinload(StopCard.photos),
             selectinload(StopCard.reporter),
+            selectinload(StopCard.violator),
             selectinload(StopCard.acknowledged_by),
             selectinload(StopCard.fixed_by),
             selectinload(StopCard.safety_checked_by),

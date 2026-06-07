@@ -24,6 +24,7 @@ class StopCard(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     reporter_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     violator_name: Mapped[str] = mapped_column(Text, nullable=False)
+    violator_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     section_id: Mapped[int] = mapped_column(ForeignKey("sections.id"), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[StopCardStatus] = mapped_column(
@@ -54,6 +55,7 @@ class StopCard(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     reporter: Mapped["User"] = relationship(back_populates="stop_cards", foreign_keys=[reporter_id])
+    violator: Mapped["User | None"] = relationship(foreign_keys=[violator_id])
     section: Mapped["Section"] = relationship(back_populates="stop_cards")
     acknowledged_by: Mapped["User | None"] = relationship(foreign_keys=[acknowledged_by_id])
     fixed_by: Mapped["User | None"] = relationship(foreign_keys=[fixed_by_id])

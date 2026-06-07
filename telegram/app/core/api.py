@@ -123,6 +123,37 @@ async def get_card(card_id: int) -> dict:
         return r.json()
 
 
+async def get_user_by_id(user_id: int) -> dict | None:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"{settings.BACKEND_URL}/bot/users/{user_id}", headers=_headers)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
+
+
+async def approve_user(user_id: int, manager_telegram_id: int) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            f"{settings.BACKEND_URL}/bot/users/{user_id}/approve",
+            headers=_headers,
+            json={"manager_telegram_id": manager_telegram_id},
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+async def reject_user(user_id: int, manager_telegram_id: int) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            f"{settings.BACKEND_URL}/bot/users/{user_id}/reject",
+            headers=_headers,
+            json={"manager_telegram_id": manager_telegram_id},
+        )
+        r.raise_for_status()
+        return r.json()
+
+
 async def get_cards_for_manager(telegram_id: int) -> list[dict]:
     async with httpx.AsyncClient() as client:
         r = await client.get(
