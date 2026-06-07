@@ -181,18 +181,6 @@ async def bot_engineer_decision(
 
 # ── Вспомогательные ──────────────────────────────────────────────────────────
 
-@router.get("/stop-cards/{stop_card_id}", response_model=StopCardResponse)
-async def get_stop_card(
-    stop_card_id: int,
-    svc: StopCardService = Depends(_service),
-    _: None = Depends(verify_bot_token),
-):
-    try:
-        return await svc.get_by_id(stop_card_id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-
-
 @router.get("/stop-cards/my/{telegram_id}", response_model=list[StopCardResponse])
 async def my_stop_cards(
     telegram_id: int,
@@ -232,6 +220,18 @@ async def cards_for_engineer(
     if engineer is None or engineer.role not in (UserRole.safety_engineer, UserRole.admin):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
     return await svc.get_for_safety_check()
+
+
+@router.get("/stop-cards/{stop_card_id}", response_model=StopCardResponse)
+async def get_stop_card(
+    stop_card_id: int,
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    try:
+        return await svc.get_by_id(stop_card_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @router.get("/photos/{minio_key:path}")
