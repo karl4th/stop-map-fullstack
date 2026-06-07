@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.core import api
-from app.keyboards.reply import main_menu, remove, skip_keyboard
+from app.keyboards.reply import cancel_keyboard, main_menu, remove, skip_keyboard
 from app.states.engineer_decision import EngineerDecision
 
 logger = logging.getLogger(__name__)
