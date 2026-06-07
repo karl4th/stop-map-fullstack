@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Contact, Message
 
 from app.core import api
+from app.core.menu import role_menu
 from app.keyboards.inline import sections_keyboard
 from app.keyboards.reply import (
     cancel_keyboard,
@@ -14,6 +15,10 @@ from app.keyboards.reply import (
     remove,
 )
 from app.states.registration import Registration
+
+
+async def _role_menu_for(telegram_id: int):
+    return await role_menu(telegram_id)
 
 router = Router()
 
@@ -68,7 +73,7 @@ async def cmd_start(message: Message, state: FSMContext):
 async def got_name(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
-        await message.answer("Отменено.", reply_markup=remove)
+        await message.answer("Отменено.", reply_markup=await _role_menu_for(message.from_user.id))
         return
 
     await state.update_data(full_name=message.text.strip())
@@ -86,7 +91,7 @@ async def got_phone(message: Message, state: FSMContext):
     await state.update_data(phone=contact.phone_number)
     sections = await api.get_sections()
     if not sections:
-        await message.answer("❌ Нет доступных участков. Обратитесь к администратору.", reply_markup=remove)
+        await message.answer("❌ Нет доступных участков. Обратитесь к администратору.")
         await state.clear()
         return
 
@@ -112,7 +117,7 @@ async def got_section(callback: CallbackQuery, state: FSMContext):
             section_id=section_id,
         )
     except Exception as e:
-        await callback.message.answer(f"❌ Ошибка регистрации: {e}", reply_markup=remove)
+        await callback.message.answer(f"❌ Ошибка регистрации: {e}")
         await state.clear()
         return
 

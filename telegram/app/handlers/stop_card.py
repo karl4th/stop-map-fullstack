@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 _photo_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 from app.core import api
+from app.core.menu import role_menu
 from app.keyboards.inline import manager_new_card_keyboard, sections_keyboard, violator_accept_keyboard
-from app.keyboards.reply import cancel_keyboard, done_keyboard, main_menu, remove
+from app.keyboards.reply import cancel_keyboard, done_keyboard, main_menu
 from app.states.stop_card import StopCard
 
 router = Router()
@@ -34,7 +35,7 @@ async def _check_active(message: Message) -> bool:
         await message.answer(
             "❌ У вас нет доступа.\n\nЕсли вы не регистрировались — напишите /start\n"
             "Если уже регистрировались — ожидайте подтверждения от менеджера.",
-            reply_markup=remove,
+            reply_markup=await role_menu(message.from_user.id),
         )
         return False
     return True
@@ -55,7 +56,7 @@ async def start_stop_card(message: Message, state: FSMContext):
 async def got_violator(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
-        await message.answer("Отменено.", reply_markup=main_menu())
+        await message.answer("Отменено.", reply_markup=await role_menu(message.from_user.id))
         return
 
     await state.update_data(violator_name=message.text.strip())
@@ -83,7 +84,7 @@ async def got_section(callback: CallbackQuery, state: FSMContext):
 async def got_description(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
-        await message.answer("Отменено.", reply_markup=main_menu())
+        await message.answer("Отменено.", reply_markup=await role_menu(message.from_user.id))
         return
 
     await state.update_data(description=message.text.strip(), photo_ids=[])
@@ -136,7 +137,7 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
             f"📸 Фото: {len(photo_ids)} шт.\n\n"
             f"Карта отправлена менеджеру участка.",
             parse_mode="HTML",
-            reply_markup=main_menu(),
+            reply_markup=await role_menu(message.from_user.id),
         )
 
         # Статус нарушителя для уведомления
@@ -213,7 +214,7 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
                 logger.warning("Failed to notify engineer %s: %s", eng["telegram_id"], e)
 
     except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}", reply_markup=main_menu())
+        await message.answer(f"❌ Ошибка: {e}", reply_markup=await role_menu(message.from_user.id))
 
 
 @router.message(StopCard.waiting_photos)
@@ -228,7 +229,7 @@ async def my_cards(message: Message):
 
     cards = await api.get_my_cards(message.from_user.id)
     if not cards:
-        await message.answer("У вас пока нет стоп-карт.", reply_markup=main_menu())
+        await message.answer("У вас пока нет стоп-карт.", reply_markup=await role_menu(message.from_user.id))
         return
 
     lines = []
@@ -240,5 +241,5 @@ async def my_cards(message: Message):
     await message.answer(
         "📂 <b>Ваши стоп-карты:</b>\n\n" + "\n\n".join(lines),
         parse_mode="HTML",
-        reply_markup=main_menu(),
+        reply_markup=await role_menu(message.from_user.id),
     )

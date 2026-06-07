@@ -7,9 +7,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.core import api
+from app.core.menu import role_menu
 from app.core.photos import send_card_photos
 from app.keyboards.inline import engineer_decision_keyboard, manager_fix_keyboard, user_approval_keyboard
-from app.keyboards.reply import cancel_keyboard, fix_done_keyboard, manager_menu, remove
+from app.keyboards.reply import cancel_keyboard, fix_done_keyboard
 from app.states.manager_fix import ManagerFix
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ async def cb_fix_start(callback: CallbackQuery, state: FSMContext):
 async def fix_got_description(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
-        await message.answer("Отменено.", reply_markup=main_menu())
+        await message.answer("Отменено.", reply_markup=await role_menu(message.from_user.id))
         return
 
     await state.update_data(fix_description=message.text.strip(), photo_ids=[])
@@ -91,7 +92,7 @@ async def fix_submit(message: Message, state: FSMContext, bot: Bot):
     fix_description = data["fix_description"]
     photo_ids: list[str] = data.get("photo_ids", [])
 
-    await message.answer("⏳ Отправляем на проверку ОТ и ТБ...", reply_markup=remove)
+    await message.answer("⏳ Отправляем на проверку ОТ и ТБ...")
 
     try:
         photos = []
@@ -104,7 +105,7 @@ async def fix_submit(message: Message, state: FSMContext, bot: Bot):
 
         await message.answer(
             f"✅ Готово! Стоп-карта #{card['id']} отправлена инженеру ОТ и ТБ на проверку.",
-            reply_markup=main_menu(),
+            reply_markup=await role_menu(message.from_user.id),
         )
 
         # Уведомляем всех инженеров ОТ и ТБ
@@ -139,7 +140,7 @@ async def fix_submit(message: Message, state: FSMContext, bot: Bot):
                 logger.warning("Failed to notify engineer %s: %s", eng["telegram_id"], e)
 
     except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}", reply_markup=main_menu())
+        await message.answer(f"❌ Ошибка: {e}", reply_markup=await role_menu(message.from_user.id))
 
 
 @router.message(ManagerFix.waiting_photos)

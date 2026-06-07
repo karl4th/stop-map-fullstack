@@ -168,15 +168,50 @@ async def bot_engineer_decision(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
     try:
         if body.action == "approve":
-            return await svc.safety_approve(stop_card_id, engineer.id, body.note)
+            card = await svc.safety_approve(stop_card_id, engineer.id, body.note)
         elif body.action == "reject":
-            return await svc.safety_reject(stop_card_id, engineer.id, body.note)
+            card = await svc.safety_reject(stop_card_id, engineer.id, body.note)
         elif body.action == "revision":
-            return await svc.safety_revision(stop_card_id, engineer.id, body.note)
+            card = await svc.safety_revision(stop_card_id, engineer.id, body.note)
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неизвестное действие")
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    note_line = f"\n\n💬 Комментарий: {body.note}" if body.note else ""
+
+    # Уведомляем менеджера участка
+    managers = await svc.user_repo.get_managers_by_section(card.section_id)
+    for mgr in managers:
+        if not mgr.telegram_id:
+            continue
+        if body.action == "approve":
+            text = (
+                f"✅ <b>Стоп-карта #{card.id} — разрешено к работе!</b>\n\n"
+                f"Инженер ОТ и ТБ разрешил возобновить работы.{note_line}"
+            )
+        elif body.action == "reject":
+            text = (
+                f"⛔ <b>Стоп-карта #{card.id} — работы ЗАПРЕЩЕНЫ!</b>\n\n"
+                f"Инженер ОТ и ТБ запретил работы.{note_line}"
+            )
+        else:  # revision
+            text = (
+                f"🔄 <b>Стоп-карта #{card.id} — требует доработки!</b>\n\n"
+                f"Инженер ОТ и ТБ вернул карту на доработку.{note_line}\n\n"
+                f"Опишите устранение заново."
+            )
+        await notify(mgr.telegram_id, text)
+
+    # Уведомляем репортёра об итоге
+    reporter = await svc.user_repo.get_by_id(card.reporter_id)
+    if reporter and reporter.telegram_id:
+        if body.action == "approve":
+            await notify(reporter.telegram_id, f"✅ <b>Стоп-карта #{card.id}</b> — работы разрешены!{note_line}")
+        elif body.action == "reject":
+            await notify(reporter.telegram_id, f"⛔ <b>Стоп-карта #{card.id}</b> — работы запрещены!{note_line}")
+
+    return card
 
 
 # ── Вспомогательные ──────────────────────────────────────────────────────────

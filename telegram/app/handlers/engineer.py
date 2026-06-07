@@ -5,7 +5,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.core import api
-from app.keyboards.reply import cancel_keyboard, main_menu, remove, skip_keyboard
+from app.core.menu import role_menu
+from app.keyboards.reply import cancel_keyboard, skip_keyboard
 from app.states.engineer_decision import EngineerDecision
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ async def engineer_skip(message: Message, state: FSMContext):
 @router.message(EngineerDecision.waiting_note, F.text == "❌ Отмена")
 async def engineer_cancel(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("Отменено.", reply_markup=remove)
+    await message.answer("Отменено.", reply_markup=await role_menu(message.from_user.id))
 
 
 # ── Инженер написал комментарий ───────────────────────────────────────────────
@@ -74,10 +75,10 @@ async def _process(message: Message, state: FSMContext, note: str | None):
     try:
         card = await api.bot_engineer(card_id, message.from_user.id, action, note)
         note_line = f"\n💬 Комментарий: {note}" if note else ""
+        menu = await role_menu(message.from_user.id)
         await message.answer(
-            f"{label}\n\n"
-            f"Стоп-карта #{card['id']} обработана.{note_line}",
-            reply_markup=remove,
+            f"{label}\n\nСтоп-карта #{card['id']} обработана.{note_line}",
+            reply_markup=menu,
         )
     except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}", reply_markup=remove)
+        await message.answer(f"❌ Ошибка: {e}", reply_markup=await role_menu(message.from_user.id))
