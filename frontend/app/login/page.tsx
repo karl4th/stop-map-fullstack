@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { IMaskInput } from "react-imask";
 import { api, decodeRole } from "@/lib/api";
 
 const EyeIcon = () => (
@@ -25,26 +26,9 @@ const SpinnerIcon = () => (
   </svg>
 );
 
-function formatPhone(d: string): string {
-  if (!d) return "";
-  let r = "+7 (";
-  if (d.length <= 3) return r + d;
-  r += d.slice(0, 3) + ") ";
-  if (d.length <= 6) return r + d.slice(3);
-  r += d.slice(3, 6) + "-";
-  if (d.length <= 8) return r + d.slice(6);
-  return r + d.slice(6, 8) + "-" + d.slice(8);
-}
-
-function extractDigits(value: string): string {
-  const raw = value.replace(/\D/g, "");
-  const clean = raw.length > 10 && /^[78]/.test(raw) ? raw.slice(1) : raw;
-  return clean.slice(0, 10);
-}
-
 export default function LoginPage() {
   const router = useRouter();
-  const [digits, setDigits] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -55,7 +39,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const data = await api.post<{ access_token: string }>("/admin/auth/login", { phone: "+7" + digits, password });
+      const data = await api.post<{ access_token: string }>("/admin/auth/login", { phone: phone.replace(/\D/g, "").replace(/^(7|8)/, "+7"), password });
       const role = decodeRole(data.access_token);
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", role);
@@ -176,24 +160,18 @@ export default function LoginPage() {
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Номер телефона
               </label>
-              <input
-                type="tel"
-                value={formatPhone(digits)}
-                onChange={(e) => setDigits(extractDigits(e.target.value))}
-                onKeyDown={(e) => {
-                  if (e.key === "Backspace") {
-                    e.preventDefault();
-                    setDigits(prev => prev.slice(0, -1));
-                  }
-                }}
+              <IMaskInput
+                mask="+7 (000) 000-00-00"
+                value={phone}
+                onAccept={(value: string) => setPhone(value)}
                 placeholder="+7 (___) ___-__-__"
                 required
                 style={inputStyle}
-                onFocus={e => {
+                onFocus={(e: React.FocusEvent<HTMLInputElement>) => {
                   e.target.style.borderColor = "rgba(249,115,22,0.5)";
                   e.target.style.boxShadow = "0 0 0 3px rgba(249,115,22,0.12)";
                 }}
-                onBlur={e => {
+                onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
                   e.target.style.borderColor = "rgba(255,255,255,0.08)";
                   e.target.style.boxShadow = "none";
                 }}
