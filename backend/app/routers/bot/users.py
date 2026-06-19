@@ -5,11 +5,14 @@ from app.core.database import get_db
 from app.core.telegram import notify
 from app.models.user import UserStatus
 from app.repositories.section import SectionRepository
+from app.repositories.stop_card import StopCardRepository
+from app.repositories.stop_card_photo import StopCardPhotoRepository
 from app.repositories.user import UserRepository
 from app.routers.deps import verify_bot_token
 from app.schemas.bot import BotRegisterRequest, BotUserApprovalRequest
 from app.schemas.section import SectionResponse
 from app.schemas.user import UserResponse
+from app.services.stop_card import StopCardService
 from app.services.user import UserService
 
 router = APIRouter(tags=["bot-users"])
@@ -17,6 +20,24 @@ router = APIRouter(tags=["bot-users"])
 
 def _service(db: AsyncSession = Depends(get_db)) -> UserService:
     return UserService(UserRepository(db))
+
+
+async def _link_pending_cards(db: AsyncSession, user_id: int) -> None:
+    svc = StopCardService(
+        StopCardRepository(db),
+        StopCardPhotoRepository(db),
+        UserRepository(db),
+    )
+    cards = await svc.link_pending_cards_for_user(user_id)
+    user = await UserRepository(db).get_by_id(user_id)
+    if user and user.telegram_id:
+        for card in cards:
+            await notify(
+                user.telegram_id,
+                f"⚠️ <b>У вас появилась стоп-карта #{card.id}</b>\n\n"
+                f"📄 {card.description}\n\n"
+                f"Откройте список карт и отправьте исправление.",
+            )
 
 
 @router.get("/users/by-telegram/{telegram_id}", response_model=UserResponse)
@@ -81,9 +102,16 @@ async def approve_user(
     if approver is None or approver.role.value not in ("manager", "admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
 
+    target = await repo.get_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
+    if approver.role.value != "admin" and approver.section_id != target.section_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к этому пользователю")
+
     user = await repo.update_status(user_id, UserStatus.active)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
+    await _link_pending_cards(db, user.id)
 
     if user.telegram_id:
         await notify(
@@ -106,6 +134,12 @@ async def reject_user(
     approver = await repo.get_by_telegram_id(body.manager_telegram_id)
     if approver is None or approver.role.value not in ("manager", "admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
+
+    target = await repo.get_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
+    if approver.role.value != "admin" and approver.section_id != target.section_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к этому пользователю")
 
     user = await repo.update_status(user_id, UserStatus.blocked)
     if user is None:

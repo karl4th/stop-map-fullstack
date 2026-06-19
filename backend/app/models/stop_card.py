@@ -9,13 +9,14 @@ from app.core.database import Base
 
 
 class StopCardStatus(str, enum.Enum):
-    created = "created"           # Создана (работник подал)
-    under_review = "under_review" # На рассмотрении (менеджер принял)
-    in_progress = "in_progress"   # В работе (менеджер устраняет / после доработки)
-    safety_check = "safety_check" # Проверка ОТ и ТБ
-    approved = "approved"         # Разрешено к работе
-    rejected = "rejected"         # Запрещено (инженер отклонил)
-    closed = "closed"             # Закрыто (финальное состояние)
+    created = "created"                         # Создана
+    waiting_violator = "waiting_violator"       # Нарушитель не найден / не зарегистрирован
+    violator_fixing = "violator_fixing"         # Нарушитель устраняет нарушение
+    manager_review = "manager_review"           # Менеджер проверяет устранение
+    safety_check = "safety_check"               # Проверка ОТ и ТБ
+    approved = "approved"                       # Разрешено к работе
+    rejected = "rejected"                       # Запрещено
+    closed = "closed"                           # Закрыто (финальное состояние)
 
 
 class StopCard(Base):
@@ -37,10 +38,15 @@ class StopCard(Base):
     acknowledged_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # Менеджер — устранение
+    # Нарушитель — устранение
     fix_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     fixed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     fixed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Менеджер — проверка устранения
+    manager_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    manager_checked_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    manager_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Инженер ОТ и ТБ — решение
     safety_note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -59,5 +65,6 @@ class StopCard(Base):
     section: Mapped["Section"] = relationship(back_populates="stop_cards")
     acknowledged_by: Mapped["User | None"] = relationship(foreign_keys=[acknowledged_by_id])
     fixed_by: Mapped["User | None"] = relationship(foreign_keys=[fixed_by_id])
+    manager_checked_by: Mapped["User | None"] = relationship(foreign_keys=[manager_checked_by_id])
     safety_checked_by: Mapped["User | None"] = relationship(foreign_keys=[safety_checked_by_id])
     photos: Mapped[list["StopCardPhoto"]] = relationship(back_populates="stop_card")

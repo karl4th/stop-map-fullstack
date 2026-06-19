@@ -19,7 +19,7 @@ from app.schemas.bot import (
     ManagerTelegramResponse,
     SafetyEngineerTelegramResponse,
 )
-from app.schemas.stop_card import StopCardResponse
+from app.schemas.stop_card import StopCardPublicResponse
 from app.services.stop_card import StopCardService
 
 router = APIRouter(tags=["bot-stop-cards"])
@@ -37,7 +37,7 @@ def _service(db: AsyncSession = Depends(get_db)) -> StopCardService:
 
 # ── Создать стоп-карту ────────────────────────────────────────────────────────
 
-@router.post("/stop-cards", response_model=StopCardResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/stop-cards", response_model=StopCardPublicResponse, status_code=status.HTTP_201_CREATED)
 async def create_stop_card(
     body: BotStopCardRequest,
     svc: StopCardService = Depends(_service),
@@ -60,7 +60,7 @@ async def create_stop_card(
 
 # ── Загрузить фото к стоп-карте (фото ДО от работника) ───────────────────────
 
-@router.post("/stop-cards/{stop_card_id}/photos", response_model=StopCardResponse)
+@router.post("/stop-cards/{stop_card_id}/photos", response_model=StopCardPublicResponse)
 async def upload_photos(
     stop_card_id: int,
     photos: list[UploadFile] = File(...),
@@ -91,7 +91,7 @@ async def upload_photos(
 
 # ── Менеджер: принять стоп-карту ─────────────────────────────────────────────
 
-@router.patch("/stop-cards/{stop_card_id}/bot-acknowledge", response_model=StopCardResponse)
+@router.patch("/stop-cards/{stop_card_id}/bot-acknowledge", response_model=StopCardPublicResponse)
 async def bot_acknowledge(
     stop_card_id: int,
     body: BotManagerActionRequest,
@@ -106,22 +106,12 @@ async def bot_acknowledge(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    # Уведомляем репортёра что карта принята
-    reporter = await svc.user_repo.get_by_id(card.reporter_id)
-    if reporter and reporter.telegram_id:
-        who = actor.full_name
-        await notify(
-            reporter.telegram_id,
-            f"📋 <b>Стоп-карта #{card.id} принята</b>\n\n"
-            f"✅ {who} принял карту — работы остановлены.\n"
-            f"Нарушение будет устранено.",
-        )
     return card
 
 
 # ── Менеджер: загрузить устранение (фото ПОСЛЕ + описание) ───────────────────
 
-@router.post("/stop-cards/{stop_card_id}/bot-fix", response_model=StopCardResponse)
+@router.post("/stop-cards/{stop_card_id}/bot-fix", response_model=StopCardPublicResponse)
 async def bot_fix(
     stop_card_id: int,
     telegram_id: int = Form(...),
@@ -130,8 +120,8 @@ async def bot_fix(
     svc: StopCardService = Depends(_service),
     _: None = Depends(verify_bot_token),
 ):
-    manager = await svc.user_repo.get_by_telegram_id(telegram_id)
-    if manager is None or manager.role not in (UserRole.manager, UserRole.admin):
+    violator = await svc.user_repo.get_by_telegram_id(telegram_id)
+    if violator is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
 
     for photo in photos:
@@ -149,14 +139,48 @@ async def bot_fix(
     after_keys = list(await asyncio.gather(*[_upload(p) for p in photos])) if photos else []
 
     try:
-        return await svc.submit_fix(stop_card_id, manager.id, fix_description, after_keys)
+        return await svc.submit_fix(stop_card_id, violator.id, fix_description, after_keys)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.patch("/stop-cards/{stop_card_id}/manager-send-to-safety", response_model=StopCardPublicResponse)
+async def manager_send_to_safety(
+    stop_card_id: int,
+    body: BotEngineerDecisionRequest,
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    manager = await svc.user_repo.get_by_telegram_id(body.telegram_id)
+    if manager is None or manager.role not in (UserRole.manager, UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
+    try:
+        return await svc.manager_send_to_safety(stop_card_id, manager.id, body.note)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.patch("/stop-cards/{stop_card_id}/manager-return", response_model=StopCardPublicResponse)
+async def manager_return_to_violator(
+    stop_card_id: int,
+    body: BotEngineerDecisionRequest,
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    manager = await svc.user_repo.get_by_telegram_id(body.telegram_id)
+    if manager is None or manager.role not in (UserRole.manager, UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
+    if not body.note:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Комментарий обязателен")
+    try:
+        return await svc.manager_return_to_violator(stop_card_id, manager.id, body.note)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 # ── Инженер ОТ и ТБ: решение ─────────────────────────────────────────────────
 
-@router.patch("/stop-cards/{stop_card_id}/bot-engineer", response_model=StopCardResponse)
+@router.patch("/stop-cards/{stop_card_id}/bot-engineer", response_model=StopCardPublicResponse)
 async def bot_engineer_decision(
     stop_card_id: int,
     body: BotEngineerDecisionRequest,
@@ -198,10 +222,24 @@ async def bot_engineer_decision(
         else:  # revision
             text = (
                 f"🔄 <b>Стоп-карта #{card.id} — требует доработки!</b>\n\n"
-                f"Инженер ОТ и ТБ вернул карту на доработку.{note_line}\n\n"
-                f"Опишите устранение заново."
+                f"Инженер ОТ и ТБ вернул карту нарушителю на доработку.{note_line}"
             )
         await notify(mgr.telegram_id, text)
+
+    # Уведомляем нарушителя
+    if card.violator_id:
+        violator = await svc.user_repo.get_by_id(card.violator_id)
+        if violator and violator.telegram_id:
+            if body.action == "approve":
+                await notify(violator.telegram_id, f"✅ <b>Стоп-карта #{card.id}</b> — работы разрешены!{note_line}")
+            elif body.action == "reject":
+                await notify(violator.telegram_id, f"⛔ <b>Стоп-карта #{card.id}</b> — работы запрещены!{note_line}")
+            else:
+                await notify(
+                    violator.telegram_id,
+                    f"🔄 <b>Стоп-карта #{card.id}</b> возвращена на доработку.{note_line}\n\n"
+                    f"Исправьте нарушение и отправьте фото заново.",
+                )
 
     # Уведомляем репортёра об итоге
     reporter = await svc.user_repo.get_by_id(card.reporter_id)
@@ -216,7 +254,7 @@ async def bot_engineer_decision(
 
 # ── Вспомогательные ──────────────────────────────────────────────────────────
 
-@router.get("/stop-cards/my/{telegram_id}", response_model=list[StopCardResponse])
+@router.get("/stop-cards/my/{telegram_id}", response_model=list[StopCardPublicResponse])
 async def my_stop_cards(
     telegram_id: int,
     svc: StopCardService = Depends(_service),
@@ -228,7 +266,24 @@ async def my_stop_cards(
     return await svc.get_by_reporter(reporter.id)
 
 
-@router.get("/stop-cards/for-manager/{telegram_id}", response_model=list[StopCardResponse])
+@router.get("/stop-cards/for-violator/{telegram_id}", response_model=list[StopCardPublicResponse])
+async def cards_for_violator(
+    telegram_id: int,
+    svc: StopCardService = Depends(_service),
+    _: None = Depends(verify_bot_token),
+):
+    violator = await svc.user_repo.get_by_telegram_id(telegram_id)
+    if violator is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
+    all_cards = await svc.repo.get_all()
+    return [
+        c for c in all_cards
+        if c.violator_id == violator.id
+        and c.status.value in ("violator_fixing", "manager_review", "safety_check", "approved", "rejected")
+    ]
+
+
+@router.get("/stop-cards/for-manager/{telegram_id}", response_model=list[StopCardPublicResponse])
 async def cards_for_manager(
     telegram_id: int,
     svc: StopCardService = Depends(_service),
@@ -238,14 +293,19 @@ async def cards_for_manager(
     if manager is None or manager.role not in (UserRole.manager, UserRole.admin):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
     all_cards = await svc.repo.get_all()
+    if manager.role == UserRole.admin:
+        return [
+            c for c in all_cards
+            if c.status.value in ("waiting_violator", "violator_fixing", "manager_review", "safety_check")
+        ]
     return [
         c for c in all_cards
         if c.section_id == manager.section_id
-        and c.status.value in ("created", "under_review", "in_progress", "safety_check")
+        and c.status.value in ("waiting_violator", "violator_fixing", "manager_review", "safety_check")
     ]
 
 
-@router.get("/stop-cards/for-engineer", response_model=list[StopCardResponse])
+@router.get("/stop-cards/for-engineer", response_model=list[StopCardPublicResponse])
 async def cards_for_engineer(
     telegram_id: int,
     svc: StopCardService = Depends(_service),
@@ -257,7 +317,7 @@ async def cards_for_engineer(
     return await svc.get_for_safety_check()
 
 
-@router.get("/stop-cards/{stop_card_id}", response_model=StopCardResponse)
+@router.get("/stop-cards/{stop_card_id}", response_model=StopCardPublicResponse)
 async def get_stop_card(
     stop_card_id: int,
     svc: StopCardService = Depends(_service),

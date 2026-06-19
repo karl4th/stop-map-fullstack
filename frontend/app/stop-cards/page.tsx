@@ -19,6 +19,9 @@ type StopCard = {
   fix_description: string | null;
   fixed_by: UserBrief | null;
   fixed_at: string | null;
+  manager_note: string | null;
+  manager_checked_by: UserBrief | null;
+  manager_checked_at: string | null;
   safety_note: string | null;
   safety_checked_by: UserBrief | null;
   safety_checked_at: string | null;
@@ -29,8 +32,9 @@ type StopCard = {
 
 const STATUS_LABELS: Record<string, string> = {
   created:      "Создана",
-  under_review: "На рассмотрении",
-  in_progress:  "В работе",
+  waiting_violator: "Ожидает регистрации нарушителя",
+  violator_fixing:  "Устраняется нарушителем",
+  manager_review:  "Проверка менеджера",
   safety_check: "Проверка ОТ и ТБ",
   approved:     "Разрешено к работе",
   rejected:     "Запрещено",
@@ -39,8 +43,9 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; dot: string }> = {
   created:      { bg: "#f8fafc",  color: "#475569", dot: "#94a3b8" },
-  under_review: { bg: "#eff6ff",  color: "#1d4ed8", dot: "#3b82f6" },
-  in_progress:  { bg: "#fff7ed",  color: "#c2410c", dot: "#f97316" },
+  waiting_violator: { bg: "#f8fafc",  color: "#475569", dot: "#94a3b8" },
+  violator_fixing:  { bg: "#fff7ed",  color: "#c2410c", dot: "#f97316" },
+  manager_review:  { bg: "#eff6ff",  color: "#1d4ed8", dot: "#3b82f6" },
   safety_check: { bg: "#fefce8",  color: "#a16207", dot: "#eab308" },
   approved:     { bg: "#f0fdf4",  color: "#15803d", dot: "#22c55e" },
   rejected:     { bg: "#fef2f2",  color: "#dc2626", dot: "#ef4444" },
@@ -134,7 +139,7 @@ export default function StopCardsPage() {
     } catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); }
   }
 
-  const allStatuses = ["all", "created", "under_review", "in_progress", "safety_check", "approved", "rejected", "closed"];
+  const allStatuses = ["all", "created", "waiting_violator", "violator_fixing", "manager_review", "safety_check", "approved", "rejected", "closed"];
   const beforePhotos = selected?.photos.filter(p => p.photo_type === "before") ?? [];
   const afterPhotos = selected?.photos.filter(p => p.photo_type === "after") ?? [];
 
@@ -344,13 +349,14 @@ export default function StopCardsPage() {
                 </div>
               )}
 
-              {(selected.acknowledged_by || selected.fixed_by || selected.safety_checked_by) && (
+              {(selected.acknowledged_by || selected.fixed_by || selected.manager_checked_by || selected.safety_checked_by) && (
                 <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ fontSize: 10.5, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 8px" }}>
                     История согласования
                   </p>
                   <AuditRow label="Принял"              who={selected.acknowledged_by}   when={selected.acknowledged_at} />
                   <AuditRow label="Устранил"            who={selected.fixed_by}          when={selected.fixed_at} />
+                  <AuditRow label="Проверил менеджер"   who={selected.manager_checked_by} when={selected.manager_checked_at} />
                   <AuditRow label="Проверил (ОТ и ТБ)" who={selected.safety_checked_by} when={selected.safety_checked_at} />
                 </div>
               )}
@@ -359,6 +365,13 @@ export default function StopCardsPage() {
                 <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ fontSize: 10.5, fontWeight: 600, color: "#15803d", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Устранение</p>
                   <p style={{ fontSize: 13.5, color: "#14532d", margin: 0, lineHeight: 1.55 }}>{selected.fix_description}</p>
+                </div>
+              )}
+
+              {selected.manager_note && (
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "12px 14px" }}>
+                  <p style={{ fontSize: 10.5, fontWeight: 600, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Комментарий менеджера</p>
+                  <p style={{ fontSize: 13.5, color: "#1e3a8a", margin: 0, lineHeight: 1.55 }}>{selected.manager_note}</p>
                 </div>
               )}
 

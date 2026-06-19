@@ -7,7 +7,7 @@ from app.repositories.stop_card import StopCardRepository
 from app.repositories.stop_card_photo import StopCardPhotoRepository
 from app.repositories.user import UserRepository
 from app.routers.deps import require_safety_engineer_or_admin
-from app.schemas.stop_card import SafetyDecisionRequest, StopCardResponse
+from app.schemas.stop_card import SafetyDecisionRequest, StopCardPublicResponse
 from app.services.stop_card import StopCardService
 
 router = APIRouter(prefix="/stop-cards", tags=["safety-engineer-stop-cards"])
@@ -21,7 +21,7 @@ def _service(db: AsyncSession = Depends(get_db)) -> StopCardService:
     )
 
 
-@router.get("", response_model=list[StopCardResponse])
+@router.get("", response_model=list[StopCardPublicResponse])
 async def list_stop_cards(
     svc: StopCardService = Depends(_service),
     current_user: User = Depends(require_safety_engineer_or_admin),
@@ -40,7 +40,7 @@ async def list_stop_cards(
     return [c for c in all_cards if c.status in relevant]
 
 
-@router.get("/{stop_card_id}", response_model=StopCardResponse)
+@router.get("/{stop_card_id}", response_model=StopCardPublicResponse)
 async def get_stop_card(
     stop_card_id: int,
     svc: StopCardService = Depends(_service),
@@ -52,7 +52,7 @@ async def get_stop_card(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@router.patch("/{stop_card_id}/approve", response_model=StopCardResponse)
+@router.patch("/{stop_card_id}/approve", response_model=StopCardPublicResponse)
 async def approve(
     stop_card_id: int,
     body: SafetyDecisionRequest,
@@ -65,7 +65,7 @@ async def approve(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.patch("/{stop_card_id}/reject", response_model=StopCardResponse)
+@router.patch("/{stop_card_id}/reject", response_model=StopCardPublicResponse)
 async def reject(
     stop_card_id: int,
     body: SafetyDecisionRequest,
@@ -78,7 +78,7 @@ async def reject(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.patch("/{stop_card_id}/revision", response_model=StopCardResponse)
+@router.patch("/{stop_card_id}/revision", response_model=StopCardPublicResponse)
 async def revision(
     stop_card_id: int,
     body: SafetyDecisionRequest,

@@ -5,15 +5,14 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, C
 
 from app.core import api
 from app.core.photos import send_card_photos
-from app.keyboards.inline import engineer_decision_keyboard, manager_fix_keyboard, manager_new_card_keyboard
-
 logger = logging.getLogger(__name__)
 router = Router()
 
 STATUS_LABELS = {
     "created":      "📋 Создана",
-    "under_review": "👁 На рассмотрении",
-    "in_progress":  "🔧 В работе",
+    "waiting_violator": "⏳ Ожидает регистрации нарушителя",
+    "violator_fixing":  "🔧 Устраняется нарушителем",
+    "manager_review":  "🧾 Проверка менеджера",
     "safety_check": "🔍 Проверка ОТ и ТБ",
     "approved":     "✅ Разрешено",
     "rejected":     "⛔ Запрещено",
@@ -28,10 +27,13 @@ def _card_keyboard(card: dict) -> InlineKeyboardMarkup:
 
     rows = []
 
-    if status == "created":
-        rows.append([InlineKeyboardButton(text="✅ Принять — остановить работы", callback_data=f"ack:{cid}")])
-    elif status in ("under_review", "in_progress"):
-        rows.append([InlineKeyboardButton(text="📝 Описать устранение нарушения", callback_data=f"fix:{cid}")])
+    if status == "violator_fixing":
+        rows.append([InlineKeyboardButton(text="📸 Отправить исправление", callback_data=f"fix:{cid}")])
+    elif status == "manager_review":
+        rows.append([
+            InlineKeyboardButton(text="✅ В ОТ и ТБ", callback_data=f"mgr_ok:{cid}"),
+            InlineKeyboardButton(text="🔄 Вернуть", callback_data=f"mgr_return:{cid}"),
+        ])
     elif status == "safety_check":
         rows.append([
             InlineKeyboardButton(text="✅ Разрешить", callback_data=f"se_ok:{cid}"),
@@ -55,26 +57,28 @@ def _format_card(card: dict) -> str:
     lines = [f"#{card['id']} · {date} · {status}", f"👤 {card['violator_name']}", f"📄 {desc}"]
     if card.get("fix_description"):
         lines.append(f"✏️ {card['fix_description'][:80]}")
-    if card.get("safety_note") and card["status"] == "in_progress":
-        lines.append(f"💬 Замечание: {card['safety_note'][:80]}")
+    if card.get("manager_note") and card["status"] == "violator_fixing":
+        lines.append(f"💬 Менеджер: {card['manager_note'][:80]}")
+    if card.get("safety_note") and card["status"] == "violator_fixing":
+        lines.append(f"💬 ОТ и ТБ: {card['safety_note'][:80]}")
     return "\n".join(lines)
 
 
 # ── Менеджер: требуют принятия ─────────────────────────────────────────────────
 
-@router.message(F.text == "🚨 Требуют принятия")
+@router.message(F.text.in_({"🚨 Требуют принятия", "🚨 Ожидают нарушителя"}))
 async def manager_need_accept(message: Message):
-    await _show_manager_cards(message, statuses={"created"})
+    await _show_manager_cards(message, statuses={"waiting_violator", "violator_fixing"})
 
 
-@router.message(F.text == "🔧 Требуют устранения")
+@router.message(F.text.in_({"🔧 Требуют устранения", "🧾 Проверить исправление"}))
 async def manager_need_fix(message: Message):
-    await _show_manager_cards(message, statuses={"under_review", "in_progress"})
+    await _show_manager_cards(message, statuses={"manager_review"})
 
 
 @router.message(F.text == "📂 Все активные карты")
 async def manager_all_active(message: Message):
-    await _show_manager_cards(message, statuses={"created", "under_review", "in_progress", "safety_check"})
+    await _show_manager_cards(message, statuses={"waiting_violator", "violator_fixing", "manager_review", "safety_check"})
 
 
 async def _show_manager_cards(message: Message, statuses: set[str]):

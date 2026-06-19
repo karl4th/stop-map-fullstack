@@ -41,6 +41,48 @@ class StopCardResponse(BaseModel):
     fixed_at: datetime | None
     fixed_by: UserBriefResponse | None = None
 
+    manager_note: str | None = None
+    manager_checked_by_id: int | None = None
+    manager_checked_at: datetime | None = None
+    manager_checked_by: UserBriefResponse | None = None
+
+    safety_note: str | None
+    safety_checked_by_id: int | None
+    safety_checked_at: datetime | None
+    safety_checked_by: UserBriefResponse | None = None
+
+    created_at: datetime
+    updated_at: datetime
+    closed_at: datetime | None
+
+    photos: list[StopCardPhotoResponse] = []
+
+    model_config = {"from_attributes": True}
+
+
+class StopCardPublicResponse(BaseModel):
+    id: int
+    violator_name: str
+    violator_id: int | None = None
+    violator: UserBriefResponse | None = None
+    section_id: int
+    description: str
+    status: StopCardStatus
+
+    acknowledged_by_id: int | None
+    acknowledged_at: datetime | None
+    acknowledged_by: UserBriefResponse | None = None
+
+    fix_description: str | None
+    fixed_by_id: int | None
+    fixed_at: datetime | None
+    fixed_by: UserBriefResponse | None = None
+
+    manager_note: str | None = None
+    manager_checked_by_id: int | None = None
+    manager_checked_at: datetime | None = None
+    manager_checked_by: UserBriefResponse | None = None
+
     safety_note: str | None
     safety_checked_by_id: int | None
     safety_checked_at: datetime | None
@@ -64,4 +106,8 @@ class SubmitFixRequest(BaseModel):
 
 
 class SafetyDecisionRequest(BaseModel):
+    note: str | None = None
+
+
+class ManagerReviewRequest(BaseModel):
     note: str | None = None

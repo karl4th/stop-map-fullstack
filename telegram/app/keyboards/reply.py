@@ -16,8 +16,8 @@ def main_menu() -> ReplyKeyboardMarkup:
 def manager_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🚨 Требуют принятия")],
-            [KeyboardButton(text="🔧 Требуют устранения")],
+            [KeyboardButton(text="🚨 Ожидают нарушителя")],
+            [KeyboardButton(text="🧾 Проверить исправление")],
             [KeyboardButton(text="📂 Все активные карты")],
         ],
         resize_keyboard=True,

@@ -30,8 +30,17 @@ class StopCardService:
         minio_keys: list[str],
     ) -> StopCard:
         # Ищем нарушителя по ФИО (точное совпадение без учёта регистра)
-        matches = await self.user_repo.find_by_full_name(violator_name)
+        matches = [
+            user
+            for user in await self.user_repo.find_by_full_name(violator_name)
+            if user.status.value == "active"
+        ]
         violator_id = matches[0].id if len(matches) == 1 else None
+        initial_status = (
+            StopCardStatus.violator_fixing
+            if violator_id is not None
+            else StopCardStatus.waiting_violator
+        )
 
         card = await self.repo.create(
             reporter_id=reporter_id,
@@ -39,7 +48,7 @@ class StopCardService:
             violator_id=violator_id,
             section_id=section_id,
             description=description,
-            status=StopCardStatus.created,
+            status=initial_status,
         )
         if minio_keys:
             await self.photo_repo.create_many(card.id, minio_keys, photo_type="before")
@@ -63,45 +72,112 @@ class StopCardService:
     async def get_for_safety_check(self) -> list[StopCard]:
         return await self.repo.get_by_status(StopCardStatus.safety_check)
 
-    # ─── Менеджер: принять карту ────────────────────────────────────────────
+    async def link_pending_cards_for_user(self, user_id: int) -> list[StopCard]:
+        user = await self.user_repo.get_by_id(user_id)
+        if user is None:
+            raise ValueError("Пользователь не найден")
+        cards = await self.repo.get_unassigned_by_violator_name(user.full_name)
+        for card in cards:
+            card.violator_id = user.id
+            card.status = StopCardStatus.violator_fixing
+        await self.repo.db.flush()
+        self.repo.db.expire_all()
+        return [await self.repo.get_with_photos(card.id) for card in cards]
+
+    def _assert_manager_can_handle(self, card: StopCard, actor) -> None:
+        if actor is None:
+            raise ValueError("Пользователь не найден")
+        if actor.role.value == "admin":
+            return
+        if actor.role.value != "manager":
+            raise ValueError("Нет прав для обработки этой карты")
+        if actor.section_id != card.section_id:
+            raise ValueError("Нет доступа к карте другого участка")
+
+    # ─── Нарушитель: принять карту ──────────────────────────────────────────
 
     async def acknowledge(self, stop_card_id: int, actor_id: int) -> StopCard:
         card = await self.get_by_id(stop_card_id)
-        if card.status != StopCardStatus.created:
-            raise ValueError("Карта уже принята или обработана")
+        if card.status not in (StopCardStatus.created, StopCardStatus.violator_fixing):
+            raise ValueError("Карта уже обработана или ожидает другого действия")
         actor = await self.user_repo.get_by_id(actor_id)
         if actor is None:
             raise ValueError("Пользователь не найден")
-        # Принять может: менеджер/админ участка ИЛИ нарушитель (если он зарегистрирован)
-        is_manager = actor.role.value in ("manager", "admin")
-        is_violator = card.violator_id is not None and card.violator_id == actor_id
-        if not is_manager and not is_violator:
+        is_violator = card.violator_id is not None and card.violator_id == actor.id
+        if not is_violator:
             raise ValueError("Нет прав для принятия этой карты")
-        card.status = StopCardStatus.under_review
+        card.status = StopCardStatus.violator_fixing
         card.acknowledged_by_id = actor_id
         card.acknowledged_at = _now()
         await self.repo.db.flush()
         self.repo.db.expire_all()
         return await self.repo.get_with_photos(stop_card_id)
 
-    # ─── Менеджер: загрузить устранение (фото после + описание) ─────────────
+    # ─── Нарушитель: загрузить устранение (фото после + описание) ───────────
 
     async def submit_fix(
         self,
         stop_card_id: int,
-        manager_id: int,
+        actor_id: int,
         fix_description: str,
         after_minio_keys: list[str],
     ) -> StopCard:
         card = await self.get_by_id(stop_card_id)
-        if card.status not in (StopCardStatus.under_review, StopCardStatus.in_progress):
+        if card.status != StopCardStatus.violator_fixing:
             raise ValueError("Нельзя загрузить устранение на данном этапе")
-        card.status = StopCardStatus.safety_check
-        card.fixed_by_id = manager_id
+        if card.violator_id != actor_id:
+            raise ValueError("Исправление может отправить только нарушитель")
+        card.status = StopCardStatus.manager_review
+        card.fixed_by_id = actor_id
         card.fixed_at = _now()
         card.fix_description = fix_description
+        card.manager_note = None
+        card.manager_checked_by_id = None
+        card.manager_checked_at = None
         if after_minio_keys:
             await self.photo_repo.create_many(stop_card_id, after_minio_keys, photo_type="after")
+        await self.repo.db.flush()
+        self.repo.db.expire_all()
+        return await self.repo.get_with_photos(stop_card_id)
+
+    # ─── Менеджер: вернуть нарушителю ───────────────────────────────────────
+
+    async def manager_return_to_violator(
+        self,
+        stop_card_id: int,
+        manager_id: int,
+        note: str,
+    ) -> StopCard:
+        card = await self.get_by_id(stop_card_id)
+        if card.status != StopCardStatus.manager_review:
+            raise ValueError("Вернуть можно только карту на проверке менеджера")
+        manager = await self.user_repo.get_by_id(manager_id)
+        self._assert_manager_can_handle(card, manager)
+        card.status = StopCardStatus.violator_fixing
+        card.manager_note = note
+        card.manager_checked_by_id = manager_id
+        card.manager_checked_at = _now()
+        await self.repo.db.flush()
+        self.repo.db.expire_all()
+        return await self.repo.get_with_photos(stop_card_id)
+
+    # ─── Менеджер: отправить в ОТ и ТБ ──────────────────────────────────────
+
+    async def manager_send_to_safety(
+        self,
+        stop_card_id: int,
+        manager_id: int,
+        note: str | None = None,
+    ) -> StopCard:
+        card = await self.get_by_id(stop_card_id)
+        if card.status != StopCardStatus.manager_review:
+            raise ValueError("Отправить в ОТ и ТБ можно только после исправления нарушителем")
+        manager = await self.user_repo.get_by_id(manager_id)
+        self._assert_manager_can_handle(card, manager)
+        card.status = StopCardStatus.safety_check
+        card.manager_note = note
+        card.manager_checked_by_id = manager_id
+        card.manager_checked_at = _now()
         await self.repo.db.flush()
         self.repo.db.expire_all()
         return await self.repo.get_with_photos(stop_card_id)
@@ -121,7 +197,6 @@ class StopCardService:
         card.safety_checked_by_id = engineer_id
         card.safety_checked_at = _now()
         card.safety_note = note
-        card.closed_at = _now()
         await self.repo.db.flush()
         self.repo.db.expire_all()
         return await self.repo.get_with_photos(stop_card_id)
@@ -156,14 +231,10 @@ class StopCardService:
         card = await self.get_by_id(stop_card_id)
         if card.status != StopCardStatus.safety_check:
             raise ValueError("Карта не находится на проверке ОТ и ТБ")
-        card.status = StopCardStatus.in_progress
+        card.status = StopCardStatus.violator_fixing
         card.safety_checked_by_id = engineer_id
         card.safety_checked_at = _now()
         card.safety_note = note
-        # Сбрасываем данные предыдущего устранения для повторной попытки
-        card.fixed_by_id = None
-        card.fixed_at = None
-        card.fix_description = None
         await self.repo.db.flush()
         self.repo.db.expire_all()
         return await self.repo.get_with_photos(stop_card_id)

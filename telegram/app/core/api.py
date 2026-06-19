@@ -164,6 +164,16 @@ async def get_cards_for_manager(telegram_id: int) -> list[dict]:
         return r.json()
 
 
+async def get_cards_for_violator(telegram_id: int) -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            f"{settings.BACKEND_URL}/bot/stop-cards/for-violator/{telegram_id}",
+            headers=_headers,
+        )
+        r.raise_for_status()
+        return r.json()
+
+
 async def get_cards_for_engineer(telegram_id: int) -> list[dict]:
     async with httpx.AsyncClient() as client:
         r = await client.get(
@@ -181,6 +191,28 @@ async def bot_engineer(card_id: int, telegram_id: int, action: str, note: str | 
             f"{settings.BACKEND_URL}/bot/stop-cards/{card_id}/bot-engineer",
             headers=_headers,
             json={"telegram_id": telegram_id, "action": action, "note": note},
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+async def manager_send_to_safety(card_id: int, telegram_id: int, note: str | None) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.patch(
+            f"{settings.BACKEND_URL}/bot/stop-cards/{card_id}/manager-send-to-safety",
+            headers=_headers,
+            json={"telegram_id": telegram_id, "action": "send_to_safety", "note": note},
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+async def manager_return(card_id: int, telegram_id: int, note: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.patch(
+            f"{settings.BACKEND_URL}/bot/stop-cards/{card_id}/manager-return",
+            headers=_headers,
+            json={"telegram_id": telegram_id, "action": "return", "note": note},
         )
         r.raise_for_status()
         return r.json()

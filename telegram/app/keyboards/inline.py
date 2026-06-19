@@ -12,14 +12,15 @@ def sections_keyboard(sections: list[dict]) -> InlineKeyboardMarkup:
 
 def manager_new_card_keyboard(card_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Принять — остановить работы", callback_data=f"ack:{card_id}"),
+        InlineKeyboardButton(text="📋 Открыть карту", callback_data=f"photos:{card_id}"),
     ]])
 
 
-def manager_fix_keyboard(card_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="📝 Описать устранение нарушения", callback_data=f"fix:{card_id}"),
-    ]])
+def manager_review_keyboard(card_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Отправить в ОТ и ТБ", callback_data=f"mgr_ok:{card_id}")],
+        [InlineKeyboardButton(text="🔄 Вернуть нарушителю", callback_data=f"mgr_return:{card_id}")],
+    ])
 
 
 def user_approval_keyboard(user_id: int) -> InlineKeyboardMarkup:
@@ -31,7 +32,9 @@ def user_approval_keyboard(user_id: int) -> InlineKeyboardMarkup:
 
 def violator_accept_keyboard(card_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Принимаю — остановлю работы", callback_data=f"ack:{card_id}"),
+        InlineKeyboardButton(text="✅ Принять и исправить", callback_data=f"ack:{card_id}"),
+    ], [
+        InlineKeyboardButton(text="📸 Отправить исправление", callback_data=f"fix:{card_id}"),
     ]])
 
 

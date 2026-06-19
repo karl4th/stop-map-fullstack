@@ -20,8 +20,9 @@ router = Router()
 
 STATUS_LABELS = {
     "created":      "📋 Создана",
-    "under_review": "👁 На рассмотрении",
-    "in_progress":  "🔧 В работе",
+    "waiting_violator": "⏳ Ожидает регистрации нарушителя",
+    "violator_fixing":  "🔧 Устраняется нарушителем",
+    "manager_review":  "🧾 Проверка менеджера",
     "safety_check": "🔍 Проверка ОТ и ТБ",
     "approved":     "✅ Разрешено к работе",
     "rejected":     "⛔ Запрещено",
@@ -135,7 +136,7 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
             f"👤 Нарушитель: {data['violator_name']}\n"
             f"📄 {data['description']}\n"
             f"📸 Фото: {len(photo_ids)} шт.\n\n"
-            f"Карта отправлена менеджеру участка.",
+            f"Карта отправлена ответственным участникам процесса.",
             parse_mode="HTML",
             reply_markup=await role_menu(message.from_user.id),
         )
@@ -162,7 +163,7 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
                         f"🚨 <b>Новая стоп-карта #{card['id']}</b>\n\n"
                         f"{violator_line}\n"
                         f"📄 {data['description']}\n\n"
-                        f"Нажмите кнопку чтобы принять карту и остановить работы."
+                        f"{'Нарушитель получит карту после регистрации.' if not violator else 'Нарушитель уведомлен и должен отправить исправление.'}"
                     ),
                     parse_mode="HTML",
                     reply_markup=manager_new_card_keyboard(card["id"]),
@@ -185,7 +186,7 @@ async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
                         text=(
                             f"⚠️ <b>На вас создана стоп-карта #{card['id']}</b>\n\n"
                             f"📄 {data['description']}\n\n"
-                            f"Нажмите кнопку чтобы принять — это подтвердит что вы остановили работы."
+                            f"Примите карту и отправьте исправление после устранения."
                         ),
                         parse_mode="HTML",
                         reply_markup=violator_accept_keyboard(card["id"]),
@@ -227,7 +228,12 @@ async def my_cards(message: Message):
     if not await _check_active(message):
         return
 
-    cards = await api.get_my_cards(message.from_user.id)
+    reported_cards = await api.get_my_cards(message.from_user.id)
+    violator_cards = await api.get_cards_for_violator(message.from_user.id)
+    cards = reported_cards + [
+        c for c in violator_cards
+        if c["id"] not in {r["id"] for r in reported_cards}
+    ]
     if not cards:
         await message.answer("У вас пока нет стоп-карт.", reply_markup=await role_menu(message.from_user.id))
         return
