@@ -90,6 +90,24 @@ async def approve_user(
     return user
 
 
+@router.delete("/{user_id}/reject", response_model=UserResponse)
+async def reject_user(
+    user_id: int,
+    svc: UserService = Depends(_service),
+    _: User = Depends(require_admin),
+):
+    try:
+        user = await svc.reject(user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if user.telegram_id:
+        await notify(
+            user.telegram_id,
+            "❌ <b>Ваша заявка отклонена.</b>\n\nОбратитесь к администратору.",
+        )
+    return user
+
+
 @router.patch("/{user_id}/block", response_model=UserResponse)
 async def block_user(
     user_id: int,

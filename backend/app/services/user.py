@@ -35,6 +35,13 @@ class UserService:
         await self.get_by_id(user_id)
         return await self.repo.update_status(user_id, UserStatus.blocked)
 
+    async def reject(self, user_id: int) -> User:
+        user = await self.get_by_id(user_id)
+        if user.status != UserStatus.pending:
+            raise ValueError("Отклонить можно только заявку в статусе ожидания")
+        await self.repo.delete(user_id)
+        return user
+
     async def assign_role(
         self,
         user_id: int,
