@@ -80,9 +80,9 @@ class StopCardService:
         for card in cards:
             card.violator_id = user.id
             card.status = StopCardStatus.violator_fixing
+        card_ids = [card.id for card in cards]
         await self.repo.db.flush()
-        self.repo.db.expire_all()
-        return [await self.repo.get_with_photos(card.id) for card in cards]
+        return [await self.repo.get_with_photos(card_id) for card_id in card_ids]
 
     def _assert_manager_can_handle(self, card: StopCard, actor) -> None:
         if actor is None:
