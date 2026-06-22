@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { IMaskInput } from "react-imask";
 import { api, decodeRole } from "@/lib/api";
 
 const EyeIcon = () => (
@@ -174,11 +173,11 @@ export default function LoginPage() {
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Номер телефона
               </label>
-              <IMaskInput
-                mask="+7 (000) 000-00-00"
+              <input
+                type="tel"
                 value={phone}
-                onAccept={(value: string) => setPhone(value)}
-                placeholder="+7 (___) ___-__-__"
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="87761174378"
                 required
                 style={inputStyle}
                 onFocus={(e: React.FocusEvent<HTMLInputElement>) => {
