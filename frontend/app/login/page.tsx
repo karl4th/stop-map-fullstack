@@ -26,6 +26,17 @@ const SpinnerIcon = () => (
   </svg>
 );
 
+function normalizePhone(value: string): string {
+  let digits = value.replace(/\D/g, "");
+  if (digits.length === 11 && (digits.startsWith("7") || digits.startsWith("8"))) {
+    digits = digits.slice(1);
+  }
+  if (digits.length === 10) {
+    return `+7${digits}`;
+  }
+  return value.trim();
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [phone, setPhone] = useState("");
@@ -39,7 +50,10 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const data = await api.post<{ access_token: string }>("/admin/auth/login", { phone: phone.replace(/\D/g, "").replace(/^(7|8)/, "+7"), password });
+      const data = await api.post<{ access_token: string }>("/admin/auth/login", {
+        phone: normalizePhone(phone),
+        password,
+      });
       const role = decodeRole(data.access_token);
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", role);
