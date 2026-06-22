@@ -50,7 +50,9 @@ services:
       - internal
 
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/karl4th/stopmap-backend:latest}
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
     restart: always
     env_file:
       - ../.env
@@ -77,7 +79,11 @@ services:
           memory: 512M
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/karl4th/stopmap-frontend:latest}
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.stopmap.kz/api
     restart: always
     depends_on:
       - backend
@@ -89,7 +95,9 @@ services:
           memory: 256M
 
   telegram:
-    image: ${TELEGRAM_IMAGE:-ghcr.io/karl4th/stopmap-telegram:latest}
+    build:
+      context: ../telegram
+      dockerfile: Dockerfile
     restart: always
     env_file:
       - ../.env
