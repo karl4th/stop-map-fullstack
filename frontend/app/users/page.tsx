@@ -132,6 +132,11 @@ export default function UsersPage() {
     catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); }
   }
 
+  async function reject(id: number) {
+    try { await api.delete(`/admin/users/${id}/reject`); load(); }
+    catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); }
+  }
+
   async function block(id: number) {
     try { await api.patch(`${prefix}/users/${id}/block`); load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); }
@@ -314,12 +319,20 @@ export default function UsersPage() {
                   </span>
 
                   {u.status === "pending" && (
-                    <button onClick={() => approve(u.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 7, background: "#22c55e", color: "white", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}
-                      onMouseEnter={e => (e.currentTarget.style.background = "#16a34a")}
-                      onMouseLeave={e => (e.currentTarget.style.background = "#22c55e")}>
-                      <CheckIcon /> Принять
-                    </button>
+                    <>
+                      <button onClick={() => approve(u.id)}
+                        style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 7, background: "#22c55e", color: "white", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#16a34a")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "#22c55e")}>
+                        <CheckIcon /> Принять
+                      </button>
+                      <button onClick={() => reject(u.id)}
+                        style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 7, background: "#fef2f2", color: "#dc2626", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#fee2e2")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "#fef2f2")}>
+                        <XIcon /> Отклонить
+                      </button>
+                    </>
                   )}
                   {u.status === "active" && (
                     <button onClick={() => block(u.id)}
