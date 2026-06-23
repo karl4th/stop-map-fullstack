@@ -1,3 +1,5 @@
+import re
+
 from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
@@ -67,6 +69,28 @@ async def cmd_start(message: Message, state: FSMContext):
 
     role = user.get("role", "worker")
     await message.answer(_role_greeting(role), reply_markup=_role_menu(role))
+
+
+@router.message(F.text.regexp(r"^/approve_(\d+)$"))
+async def cmd_approve(message: Message):
+    match = re.match(r"^/approve_(\d+)$", message.text)
+    user_id = int(match.group(1))
+    try:
+        user = await api.approve_user(user_id, message.from_user.id)
+        await message.answer(f"✅ Пользователь <b>{user['full_name']}</b> одобрен.", parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@router.message(F.text.regexp(r"^/reject_(\d+)$"))
+async def cmd_reject(message: Message):
+    match = re.match(r"^/reject_(\d+)$", message.text)
+    user_id = int(match.group(1))
+    try:
+        user = await api.reject_user(user_id, message.from_user.id)
+        await message.answer(f"🚫 Пользователь <b>{user['full_name']}</b> отклонён.", parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
 
 
 @router.message(Registration.waiting_name)
