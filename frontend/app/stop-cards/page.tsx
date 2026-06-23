@@ -4,6 +4,8 @@ import Layout from "@/components/Layout";
 import AuthImage from "@/components/AuthImage";
 import { api, getRole, isAdmin } from "@/lib/api";
 
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
 type Photo = { id: number; minio_key: string; photo_type: string };
 type UserBrief = { id: number; full_name: string };
 
@@ -98,6 +100,7 @@ export default function StopCardsPage() {
   const [selected, setSelected] = useState<StopCard | null>(null);
   const [admin, setAdmin] = useState(false);
   const [role, setRole] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     setAdmin(isAdmin());
@@ -130,6 +133,33 @@ export default function StopCardsPage() {
   }
 
   useEffect(() => { if (role) load(); }, [statusFilter, role]);
+
+  async function exportExcel() {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (year) params.set("year", year);
+      if (month) params.set("month", month);
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(
+        `${BASE_URL}/admin/stop-cards/export${params.toString() ? "?" + params : ""}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
+      if (!res.ok) throw new Error("Ошибка экспорта");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stop_cards_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Ошибка экспорта");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function adminClose(cardId: number) {
     try {
@@ -197,6 +227,20 @@ export default function StopCardsPage() {
             <button onClick={load}
               style={{ padding: "7px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
               Применить
+            </button>
+            <button onClick={exportExcel} disabled={exporting}
+              style={{
+                padding: "7px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                background: exporting ? "#e2e8f0" : "#16a34a", color: exporting ? "#94a3b8" : "#fff",
+                border: "none", cursor: exporting ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              {exporting ? "Экспорт..." : "Excel"}
             </button>
           </div>
         )}
