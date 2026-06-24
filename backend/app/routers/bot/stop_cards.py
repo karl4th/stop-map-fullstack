@@ -239,6 +239,9 @@ async def bot_engineer_decision(
                     violator.telegram_id,
                     f"🔄 <b>Стоп-карта #{card.id}</b> возвращена на доработку.{note_line}\n\n"
                     f"Исправьте нарушение и отправьте фото заново.",
+                    inline_keyboard=[[
+                        {"text": "📸 Отправить исправление", "callback_data": f"fix:{card.id}"},
+                    ]],
                 )
 
     # Уведомляем репортёра об итоге

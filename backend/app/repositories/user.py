@@ -65,6 +65,16 @@ class UserRepository(BaseRepository[User]):
         )
         return list(result.scalars().all())
 
+    async def get_admins_with_telegram(self) -> list[User]:
+        result = await self.db.execute(
+            select(User).where(
+                User.role == UserRole.admin,
+                User.status == UserStatus.active,
+                User.telegram_id.isnot(None),
+            )
+        )
+        return list(result.scalars().all())
+
     async def update_status(self, user_id: int, status: UserStatus) -> User | None:
         user = await self.get_by_id(user_id)
         if user is None:

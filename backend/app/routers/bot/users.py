@@ -70,20 +70,35 @@ async def register(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
     # Уведомляем менеджеров участка о новом сотруднике
-    managers = await UserRepository(db).get_managers_by_section(body.section_id)
+    repo = UserRepository(db)
+    managers = await repo.get_managers_by_section(body.section_id)
     section = await SectionRepository(db).get_by_id(body.section_id)
     section_name = section.name if section else f"участок {body.section_id}"
+
+    notification_text = (
+        f"👤 <b>Новый сотрудник ожидает одобрения</b>\n\n"
+        f"ФИО: {body.full_name}\n"
+        f"Телефон: {body.phone}\n"
+        f"Участок: {section_name}\n\n"
+        f"ID пользователя: <code>{user.id}</code>\n"
+        f"Отправьте боту: /approve_{user.id} или /reject_{user.id}"
+    )
+    approval_keyboard = [[
+        {"text": "✅ Одобрить", "callback_data": f"uapprove:{user.id}"},
+        {"text": "❌ Отклонить", "callback_data": f"ureject:{user.id}"},
+    ]]
+
+    notified = False
     for mgr in managers:
         if mgr.telegram_id:
-            await notify(
-                mgr.telegram_id,
-                f"👤 <b>Новый сотрудник ожидает одобрения</b>\n\n"
-                f"ФИО: {body.full_name}\n"
-                f"Телефон: {body.phone}\n"
-                f"Участок: {section_name}\n\n"
-                f"ID пользователя: <code>{user.id}</code>\n"
-                f"Отправьте боту: /approve_{user.id} или /reject_{user.id}",
-            )
+            await notify(mgr.telegram_id, notification_text, inline_keyboard=approval_keyboard)
+            notified = True
+
+    # Если у менеджеров нет telegram_id — уведомляем всех adminов с telegram_id
+    if not notified:
+        admins = await repo.get_admins_with_telegram()
+        for adm in admins:
+            await notify(adm.telegram_id, notification_text, inline_keyboard=approval_keyboard)
 
     return user
 
