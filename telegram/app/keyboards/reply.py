@@ -43,7 +43,10 @@ def phone_keyboard() -> ReplyKeyboardMarkup:
 
 def done_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="✅ Готово — отправить карту")]],
+        keyboard=[
+            [KeyboardButton(text="✅ Готово — отправить карту")],
+            [KeyboardButton(text="🗑 Удалить последнее фото")],
+        ],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
@@ -51,7 +54,10 @@ def done_keyboard() -> ReplyKeyboardMarkup:
 
 def fix_done_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="✅ Готово — отправить на проверку")]],
+        keyboard=[
+            [KeyboardButton(text="✅ Готово — отправить на проверку")],
+            [KeyboardButton(text="🗑 Удалить последнее фото")],
+        ],
         resize_keyboard=True,
         one_time_keyboard=True,
     )

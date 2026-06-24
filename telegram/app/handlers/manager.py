@@ -87,6 +87,21 @@ async def fix_got_photo(message: Message, state: FSMContext):
 
 # ── Нарушитель нажал "Готово" ────────────────────────────────────────────────
 
+@router.message(ManagerFix.waiting_photos, F.text == "🗑 Удалить последнее фото")
+async def fix_delete_last_photo(message: Message, state: FSMContext):
+    data = await state.get_data()
+    photo_ids = data.get("photo_ids", [])
+    if not photo_ids:
+        await message.answer("Нет фотографий для удаления.", reply_markup=fix_done_keyboard())
+        return
+    photo_ids.pop()
+    await state.update_data(photo_ids=photo_ids)
+    if photo_ids:
+        await message.answer(f"🗑 Удалено. Осталось фото: {len(photo_ids)}.", reply_markup=fix_done_keyboard())
+    else:
+        await message.answer("🗑 Все фото удалены. Можете отправить новые.", reply_markup=fix_done_keyboard())
+
+
 @router.message(ManagerFix.waiting_photos, F.text == "✅ Готово — отправить на проверку")
 async def fix_submit(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()

@@ -107,6 +107,21 @@ async def got_photo(message: Message, state: FSMContext):
     await message.answer(f"✅ Фото {len(photo_ids)} принято. Ещё или нажмите «Готово».")
 
 
+@router.message(StopCard.waiting_photos, F.text == "🗑 Удалить последнее фото")
+async def delete_last_photo(message: Message, state: FSMContext):
+    data = await state.get_data()
+    photo_ids = data.get("photo_ids", [])
+    if not photo_ids:
+        await message.answer("Нет фотографий для удаления.", reply_markup=done_keyboard())
+        return
+    photo_ids.pop()
+    await state.update_data(photo_ids=photo_ids)
+    if photo_ids:
+        await message.answer(f"🗑 Удалено. Осталось фото: {len(photo_ids)}.", reply_markup=done_keyboard())
+    else:
+        await message.answer("🗑 Все фото удалены. Можете отправить новые.", reply_markup=done_keyboard())
+
+
 @router.message(StopCard.waiting_photos, F.text == "✅ Готово — отправить карту")
 async def submit_stop_card(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
