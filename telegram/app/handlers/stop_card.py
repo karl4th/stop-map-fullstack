@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InputMediaPhoto, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message
 
 logger = logging.getLogger(__name__)
 
@@ -238,14 +238,23 @@ async def my_cards(message: Message):
         await message.answer("У вас пока нет стоп-карт.", reply_markup=await role_menu(message.from_user.id))
         return
 
-    lines = []
+    await message.answer(f"📂 <b>Ваши стоп-карты:</b> {len(cards)} шт.", parse_mode="HTML")
+
     for c in cards[:10]:
         status = STATUS_LABELS.get(c["status"], c["status"])
         date = c["created_at"][:10]
-        lines.append(f"#{c['id']} · {date}\n   {c['violator_name']}\n   {status}")
+        text = f"#{c['id']} · {date} · {status}\n👤 {c['violator_name']}"
+        if c.get("fix_description"):
+            text += f"\n✏️ {c['fix_description'][:80]}"
+        if c.get("manager_note") and c["status"] == "violator_fixing":
+            text += f"\n💬 Вернули: {c['manager_note'][:80]}"
+        if c.get("safety_note") and c["status"] == "violator_fixing":
+            text += f"\n💬 ОТ и ТБ: {c['safety_note'][:80]}"
 
-    await message.answer(
-        "📂 <b>Ваши стоп-карты:</b>\n\n" + "\n\n".join(lines),
-        parse_mode="HTML",
-        reply_markup=await role_menu(message.from_user.id),
-    )
+        kb = None
+        if c["status"] == "violator_fixing":
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="📸 Отправить исправление", callback_data=f"fix:{c['id']}")
+            ]])
+
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)

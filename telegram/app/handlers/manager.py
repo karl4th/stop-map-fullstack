@@ -60,6 +60,10 @@ async def fix_got_description(message: Message, state: FSMContext):
         await message.answer("Отменено.", reply_markup=await role_menu(message.from_user.id))
         return
 
+    if not message.text:
+        await message.answer("✏️ Пожалуйста, отправьте текстовое описание того, что было сделано.", reply_markup=cancel_keyboard())
+        return
+
     await state.update_data(fix_description=message.text.strip(), photo_ids=[])
     await state.set_state(ManagerFix.waiting_photos)
     await message.answer(
