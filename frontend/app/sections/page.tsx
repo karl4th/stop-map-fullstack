@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Layout from "@/components/Layout";
 import { api } from "@/lib/api";
 
@@ -56,15 +56,15 @@ export default function SectionsPage() {
   const [editName, setEditName] = useState("");
   const [error, setError] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setSections(await api.get<Section[]>("/admin/sections"));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Ошибка");
     }
-  }
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, [load]);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();

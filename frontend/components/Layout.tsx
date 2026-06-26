@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { getRole } from "@/lib/api";
-import { useEffect, useState } from "react";
+import { api, getRole } from "@/lib/api";
+import { useState } from "react";
 
 const FactoryIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -59,9 +59,7 @@ const ROLE_LABELS: Record<string, string> = {
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [role, setRole] = useState<string | null>(null);
-
-  useEffect(() => { setRole(getRole()); }, []);
+  const [role] = useState<string | null>(() => getRole());
 
   const nav =
     role === "admin" ? adminNav :
@@ -71,6 +69,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const roleLabel = ROLE_LABELS[role ?? ""] ?? "Пользователь";
 
   function logout() {
+    void api.post("/admin/auth/logout", {}).catch(() => {});
     localStorage.removeItem("token");
     localStorage.removeItem("role");
     router.push("/login");

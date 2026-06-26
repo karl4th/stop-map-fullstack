@@ -17,8 +17,14 @@ class Settings(BaseSettings):
     )
 
     TELEGRAM_BOT_TOKEN: str
+    BOT_API_TOKEN: str = ""
     REDIS_URL: str = "redis://localhost:6379/0"
     BACKEND_URL: str = "http://localhost:8000/api"
+    LOG_LEVEL: str = "INFO"
+
+    @property
+    def bot_api_token(self) -> str:
+        return self.BOT_API_TOKEN or self.TELEGRAM_BOT_TOKEN
 
 
 settings = Settings()

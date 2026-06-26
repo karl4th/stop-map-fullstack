@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.minio import ensure_bucket
 from app.core.redis import close_redis, get_redis
+from app.core.telegram import close_telegram_client
 from app.routers.admin import router as admin_router
 from app.routers.bot import router as bot_router
 from app.routers.manager import router as manager_router
@@ -22,6 +23,7 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await create_first_admin(db)
     yield
+    await close_telegram_client()
     await close_redis()
 
 
@@ -29,7 +31,7 @@ app = FastAPI(title="StopMap API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS.split(","),
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

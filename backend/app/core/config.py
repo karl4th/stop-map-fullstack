@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str
+    BOT_API_TOKEN: str = ""
 
     # First admin bootstrap
     FIRST_ADMIN_PHONE: str = "+77000000000"
@@ -46,6 +47,17 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     SECRET_KEY: str
     CORS_ORIGINS: str = "http://localhost:3000"
+    MAX_UPLOAD_FILES: int = 5
+    MAX_UPLOAD_BYTES: int = 8 * 1024 * 1024
+    MAX_PHOTO_RESPONSE_BYTES: int = 12 * 1024 * 1024
+
+    @property
+    def bot_api_token(self) -> str:
+        return self.BOT_API_TOKEN or self.TELEGRAM_BOT_TOKEN
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
     @property
     def DATABASE_URL(self) -> str:

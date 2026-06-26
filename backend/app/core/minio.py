@@ -51,6 +51,9 @@ async def get_file(key: str) -> tuple[bytes, str]:
     loop = asyncio.get_running_loop()
 
     def _download():
+        stat = client.stat_object(settings.MINIO_BUCKET, key)
+        if stat.size and stat.size > settings.MAX_PHOTO_RESPONSE_BYTES:
+            raise ValueError("Object is too large")
         response = client.get_object(settings.MINIO_BUCKET, key)
         data = response.read()
         content_type = response.headers.get("content-type", "image/jpeg")

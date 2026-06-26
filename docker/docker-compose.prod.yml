@@ -83,7 +83,7 @@ services:
       context: ../frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://api.stopmap.kz/api
+        NEXT_PUBLIC_API_URL: https://api.stop-card.kz/api
     restart: always
     depends_on:
       - backend

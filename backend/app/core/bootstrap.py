@@ -7,6 +7,12 @@ from app.services.auth import hash_password as _hash_password
 
 
 async def create_first_admin(db: AsyncSession) -> None:
+    if (
+        settings.APP_ENV == "production"
+        and settings.FIRST_ADMIN_PASSWORD == "change_me_in_production"
+    ):
+        raise RuntimeError("FIRST_ADMIN_PASSWORD must be changed in production")
+
     result = await db.execute(
         select(User).where(User.role == UserRole.admin).limit(1)
     )

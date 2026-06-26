@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Layout from "@/components/Layout";
 import AuthImage from "@/components/AuthImage";
 import { api, getRole, isAdmin } from "@/lib/api";
@@ -98,22 +98,17 @@ export default function StopCardsPage() {
   const [month, setMonth] = useState("");
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<StopCard | null>(null);
-  const [admin, setAdmin] = useState(false);
-  const [role, setRole] = useState("");
+  const [admin] = useState(() => isAdmin());
+  const [role] = useState(() => getRole() ?? "");
   const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
-    setAdmin(isAdmin());
-    setRole(getRole() ?? "");
-  }, []);
-
-  function apiPrefix(): string {
+  const apiPrefix = useCallback((): string => {
     if (admin) return "/admin";
     if (role === "safety_engineer") return "/safety-engineer";
     return "/manager";
-  }
+  }, [admin, role]);
 
-  async function load() {
+  const load = useCallback(async () => {
     setError("");
     try {
       let path = `${apiPrefix()}/stop-cards`;
@@ -130,9 +125,9 @@ export default function StopCardsPage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Ошибка");
     }
-  }
+  }, [admin, apiPrefix, month, statusFilter, year]);
 
-  useEffect(() => { if (role) load(); }, [statusFilter, role]);
+  useEffect(() => { if (role) void load(); }, [load, role]);
 
   async function exportExcel() {
     setExporting(true);
@@ -144,7 +139,7 @@ export default function StopCardsPage() {
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const res = await fetch(
         `${BASE_URL}/admin/stop-cards/export${params.toString() ? "?" + params : ""}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+        { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : {} }
       );
       if (!res.ok) throw new Error("Ошибка экспорта");
       const blob = await res.blob();
@@ -165,7 +160,7 @@ export default function StopCardsPage() {
     try {
       const updated = await api.patch<StopCard>(`/admin/stop-cards/${cardId}/close`);
       setSelected(updated);
-      load();
+      void load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); }
   }
 

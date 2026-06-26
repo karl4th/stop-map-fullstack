@@ -5,6 +5,16 @@ function getToken(): string | null {
   return localStorage.getItem("token");
 }
 
+function clearSession() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("role");
+}
+
+export function getAuthHeaders(): HeadersInit {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export function getRole(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("role");
@@ -24,7 +34,9 @@ export function isManager(): boolean {
 
 export function decodeRole(token: string): string {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    const payloadPart = token.split(".")[1];
+    const padded = payloadPart.padEnd(payloadPart.length + (4 - payloadPart.length % 4) % 4, "=");
+    const payload = JSON.parse(atob(padded.replace(/-/g, "+").replace(/_/g, "/")));
     return payload.role ?? "worker";
   } catch {
     return "worker";
@@ -32,19 +44,18 @@ export function decodeRole(token: string): string {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...getAuthHeaders(),
       ...options.headers,
     },
   });
 
   if (res.status === 401 && !path.endsWith("/auth/login")) {
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
+    clearSession();
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
@@ -73,15 +84,14 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 
   postForm: <T>(path: string, formData: FormData) => {
-    const token = getToken();
     return fetch(`${BASE_URL}${path}`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: "include",
+      headers: getAuthHeaders(),
       body: formData,
     }).then(async (res) => {
       if (res.status === 401) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("role");
+        clearSession();
         window.location.href = "/login";
         throw new Error("Unauthorized");
       }

@@ -66,8 +66,37 @@ class StopCardService:
     async def get_by_reporter(self, reporter_id: int) -> list[StopCard]:
         return await self.repo.get_by_reporter(reporter_id)
 
-    async def get_by_month(self, year: int, month: int) -> list[StopCard]:
-        return await self.repo.get_by_month(year, month)
+    async def get_by_month(
+        self,
+        year: int,
+        month: int,
+        *,
+        section_id: int | None = None,
+        status: StopCardStatus | None = None,
+    ) -> list[StopCard]:
+        return await self.repo.get_by_month(
+            year,
+            month,
+            section_id=section_id,
+            status=status,
+        )
+
+    async def get_filtered(
+        self,
+        *,
+        section_id: int | None = None,
+        status: StopCardStatus | None = None,
+        statuses: list[StopCardStatus] | None = None,
+        reporter_id: int | None = None,
+        violator_id: int | None = None,
+    ) -> list[StopCard]:
+        return await self.repo.get_filtered(
+            section_id=section_id,
+            status=status,
+            statuses=statuses,
+            reporter_id=reporter_id,
+            violator_id=violator_id,
+        )
 
     async def get_for_safety_check(self) -> list[StopCard]:
         return await self.repo.get_by_status(StopCardStatus.safety_check)

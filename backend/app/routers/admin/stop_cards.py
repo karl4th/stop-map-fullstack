@@ -28,6 +28,28 @@ def _service(db: AsyncSession = Depends(get_db)) -> StopCardService:
     )
 
 
+async def _filtered_cards(
+    svc: StopCardService,
+    section_id: int | None,
+    card_status: StopCardStatus | None,
+    year: int | None,
+    month: int | None,
+) -> list[StopCard]:
+    if (year is None) != (month is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Год и месяц нужно передавать вместе",
+        )
+    if year is not None and month is not None:
+        return await svc.get_by_month(
+            year,
+            month,
+            section_id=section_id,
+            status=card_status,
+        )
+    return await svc.get_filtered(section_id=section_id, status=card_status)
+
+
 @router.get("", response_model=list[StopCardResponse])
 async def list_stop_cards(
     section_id: int | None = Query(None),
@@ -37,18 +59,7 @@ async def list_stop_cards(
     svc: StopCardService = Depends(_service),
     _: User = Depends(require_admin),
 ):
-    if year and month:
-        cards = await svc.get_by_month(year, month)
-    elif section_id:
-        cards = await svc.get_by_section(section_id)
-    else:
-        cards = await svc.repo.get_all()
-
-    if year and month and section_id:
-        cards = [c for c in cards if c.section_id == section_id]
-    if card_status:
-        cards = [c for c in cards if c.status == card_status]
-    return cards
+    return await _filtered_cards(svc, section_id, card_status, year, month)
 
 
 STATUS_LABELS = {
@@ -141,17 +152,7 @@ async def export_stop_cards(
     svc: StopCardService = Depends(_service),
     _: User = Depends(require_admin),
 ):
-    if year and month:
-        cards = await svc.get_by_month(year, month)
-    elif section_id:
-        cards = await svc.get_by_section(section_id)
-    else:
-        cards = await svc.repo.get_all()
-
-    if year and month and section_id:
-        cards = [c for c in cards if c.section_id == section_id]
-    if card_status:
-        cards = [c for c in cards if c.status == card_status]
+    cards = await _filtered_cards(svc, section_id, card_status, year, month)
 
     content = _build_excel(cards)
     filename = f"stop_cards_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"

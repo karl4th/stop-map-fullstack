@@ -25,6 +25,30 @@ class UserRepository(BaseRepository[User]):
         )
         return list(result.scalars().all())
 
+    async def get_filtered(
+        self,
+        *,
+        section_id: int | None = None,
+        role: UserRole | None = None,
+        status: UserStatus | None = None,
+        search: str | None = None,
+    ) -> list[User]:
+        stmt = select(User)
+        if section_id is not None:
+            stmt = stmt.where(User.section_id == section_id)
+        if role is not None:
+            stmt = stmt.where(User.role == role)
+        if status is not None:
+            stmt = stmt.where(User.status == status)
+        if search:
+            q = f"%{search.lower().strip()}%"
+            stmt = stmt.where(
+                (func.lower(User.full_name).like(q))
+                | (func.lower(User.phone).like(q))
+            )
+        result = await self.db.execute(stmt.order_by(User.created_at.desc()))
+        return list(result.scalars().all())
+
     async def get_managers_by_section(self, section_id: int) -> list[User]:
         result = await self.db.execute(
             select(User).where(

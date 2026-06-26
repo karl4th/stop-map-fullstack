@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Layout from "@/components/Layout";
 import { api, isAdmin } from "@/lib/api";
 
@@ -84,22 +84,22 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterRole, setFilterRole] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterSection, setFilterSection] = useState("all");
   const [error, setError] = useState("");
   const [roleModal, setRoleModal] = useState<{ userId: number; role: string; section_id: string } | null>(null);
   const [password, setPassword] = useState("");
-  const [admin, setAdmin] = useState(false);
+  const [admin] = useState(() => isAdmin());
 
   useEffect(() => {
-    setAdmin(isAdmin());
     api.get<Section[]>("/admin/sections").then(setSections).catch(() => {});
   }, []);
 
   const prefix = admin ? "/admin" : "/manager";
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       let path = `${prefix}/users`;
       if (admin) {
@@ -107,7 +107,7 @@ export default function UsersPage() {
         if (filterRole !== "all") params.set("role", filterRole);
         if (filterStatus !== "all") params.set("status", filterStatus);
         if (filterSection !== "all") params.set("section_id", filterSection);
-        if (search.trim()) params.set("search", search.trim());
+        if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
         if (params.toString()) path += `?${params}`;
       } else if (filterStatus === "pending") {
         path = `${prefix}/users/pending`;
@@ -116,29 +116,29 @@ export default function UsersPage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Ошибка");
     }
-  }
+  }, [admin, debouncedSearch, filterRole, filterSection, filterStatus, prefix]);
 
-  useEffect(() => { load(); }, [filterRole, filterStatus, filterSection, admin]);
+  useEffect(() => { void load(); }, [load]);
 
   // Debounce search
   useEffect(() => {
     if (!admin) return;
-    const t = setTimeout(load, 300);
+    const t = setTimeout(() => { setDebouncedSearch(search); }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [admin, search]);
 
   async function approve(id: number) {
-    try { await api.patch(`${prefix}/users/${id}/approve`); load(); }
+    try { await api.patch(`${prefix}/users/${id}/approve`); void load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); }
   }
 
   async function reject(id: number) {
-    try { await api.delete(`/admin/users/${id}/reject`); load(); }
+    try { await api.delete(`/admin/users/${id}/reject`); void load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); }
   }
 
   async function block(id: number) {
-    try { await api.patch(`${prefix}/users/${id}/block`); load(); }
+    try { await api.patch(`${prefix}/users/${id}/block`); void load(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); }
   }
 
@@ -152,7 +152,7 @@ export default function UsersPage() {
       });
       setRoleModal(null);
       setPassword("");
-      load();
+      void load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Ошибка");
     }

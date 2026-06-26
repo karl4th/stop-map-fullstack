@@ -54,7 +54,7 @@ export default function LoginPage() {
         password,
       });
       const role = decodeRole(data.access_token);
-      localStorage.setItem("token", data.access_token);
+      localStorage.removeItem("token");
       localStorage.setItem("role", role);
       if (role === "manager") router.push("/users");
       else if (role === "safety_engineer") router.push("/stop-cards");

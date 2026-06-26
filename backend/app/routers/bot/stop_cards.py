@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.minio import get_file as minio_get_file, upload_file
 from app.core.telegram import notify
+from app.models.stop_card import StopCardStatus
 from app.models.user import UserRole
 from app.repositories.stop_card import StopCardRepository
 from app.repositories.stop_card_photo import StopCardPhotoRepository
@@ -25,6 +27,26 @@ from app.services.stop_card import StopCardService
 router = APIRouter(tags=["bot-stop-cards"])
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+IMAGE_SIGNATURES = {
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/webp": (b"RIFF",),
+}
+EXTENSIONS = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+}
+
+
+def _detect_image_content_type(data: bytes) -> str | None:
+    if data.startswith(IMAGE_SIGNATURES["image/jpeg"]):
+        return "image/jpeg"
+    if data.startswith(IMAGE_SIGNATURES["image/png"]):
+        return "image/png"
+    if data.startswith(IMAGE_SIGNATURES["image/webp"]) and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 
 def _service(db: AsyncSession = Depends(get_db)) -> StopCardService:
@@ -33,6 +55,40 @@ def _service(db: AsyncSession = Depends(get_db)) -> StopCardService:
         StopCardPhotoRepository(db),
         UserRepository(db),
     )
+
+
+async def _read_photo(photo: UploadFile) -> tuple[bytes, str, str]:
+    if photo.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Неподдерживаемый тип файла: {photo.content_type}",
+        )
+    data = await photo.read(settings.MAX_UPLOAD_BYTES + 1)
+    if len(data) > settings.MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Файл слишком большой",
+        )
+    content_type = _detect_image_content_type(data)
+    if content_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Файл не похож на изображение",
+        )
+    if content_type != photo.content_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Тип файла не совпадает с содержимым",
+        )
+    return data, content_type, EXTENSIONS[content_type]
+
+
+def _assert_photo_count(photos: list[UploadFile]) -> None:
+    if len(photos) > settings.MAX_UPLOAD_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Можно загрузить не более {settings.MAX_UPLOAD_FILES} фото",
+        )
 
 
 # ── Создать стоп-карту ────────────────────────────────────────────────────────
@@ -72,17 +128,11 @@ async def upload_photos(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
-    for photo in photos:
-        if photo.content_type not in ALLOWED_CONTENT_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Неподдерживаемый тип файла: {photo.content_type}",
-            )
+    _assert_photo_count(photos)
 
     async def _read_and_upload(photo: UploadFile) -> str:
-        ext = photo.content_type.split("/")[-1]
-        data = await photo.read()
-        return await upload_file(data, photo.content_type, ext)
+        data, content_type, ext = await _read_photo(photo)
+        return await upload_file(data, content_type, ext)
 
     keys = await asyncio.gather(*[_read_and_upload(p) for p in photos])
     await svc.photo_repo.create_many(stop_card_id, list(keys), photo_type="before")
@@ -124,17 +174,11 @@ async def bot_fix(
     if violator is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
 
-    for photo in photos:
-        if photo.content_type not in ALLOWED_CONTENT_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Неподдерживаемый тип файла: {photo.content_type}",
-            )
+    _assert_photo_count(photos)
 
     async def _upload(p: UploadFile) -> str:
-        ext = p.content_type.split("/")[-1]
-        data = await p.read()
-        return await upload_file(data, p.content_type, ext)
+        data, content_type, ext = await _read_photo(p)
+        return await upload_file(data, content_type, ext)
 
     after_keys = list(await asyncio.gather(*[_upload(p) for p in photos])) if photos else []
 
@@ -278,12 +322,16 @@ async def cards_for_violator(
     violator = await svc.user_repo.get_by_telegram_id(telegram_id)
     if violator is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
-    all_cards = await svc.repo.get_all()
-    return [
-        c for c in all_cards
-        if c.violator_id == violator.id
-        and c.status.value in ("violator_fixing", "manager_review", "safety_check", "approved", "rejected")
-    ]
+    return await svc.get_filtered(
+        violator_id=violator.id,
+        statuses=[
+            StopCardStatus.violator_fixing,
+            StopCardStatus.manager_review,
+            StopCardStatus.safety_check,
+            StopCardStatus.approved,
+            StopCardStatus.rejected,
+        ],
+    )
 
 
 @router.get("/stop-cards/for-manager/{telegram_id}", response_model=list[StopCardPublicResponse])
@@ -295,17 +343,15 @@ async def cards_for_manager(
     manager = await svc.user_repo.get_by_telegram_id(telegram_id)
     if manager is None or manager.role not in (UserRole.manager, UserRole.admin):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет прав")
-    all_cards = await svc.repo.get_all()
-    if manager.role == UserRole.admin:
-        return [
-            c for c in all_cards
-            if c.status.value in ("waiting_violator", "violator_fixing", "manager_review", "safety_check")
-        ]
-    return [
-        c for c in all_cards
-        if c.section_id == manager.section_id
-        and c.status.value in ("waiting_violator", "violator_fixing", "manager_review", "safety_check")
+    statuses = [
+        StopCardStatus.waiting_violator,
+        StopCardStatus.violator_fixing,
+        StopCardStatus.manager_review,
+        StopCardStatus.safety_check,
     ]
+    if manager.role == UserRole.admin:
+        return await svc.get_filtered(statuses=statuses)
+    return await svc.get_filtered(section_id=manager.section_id, statuses=statuses)
 
 
 @router.get("/stop-cards/for-engineer", response_model=list[StopCardPublicResponse])
@@ -339,7 +385,13 @@ async def get_photo(
 ):
     try:
         data, content_type = await minio_get_file(minio_key)
-        return Response(content=data, media_type=content_type)
+        return Response(
+            content=data,
+            media_type=content_type,
+            headers={"Cache-Control": "private, max-age=300"},
+        )
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Фото слишком большое")
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 

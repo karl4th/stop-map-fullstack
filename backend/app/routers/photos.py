@@ -33,6 +33,12 @@ async def proxy_photo(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к фото")
     try:
         data, content_type = await get_file(key)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Фото слишком большое")
     except Exception:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Фото не найдено")
-    return Response(content=data, media_type=content_type)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )

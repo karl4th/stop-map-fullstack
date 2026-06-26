@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { getAuthHeaders } from "@/lib/api";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
@@ -9,25 +10,44 @@ export default function AuthImage({ minioKey, className, style }: {
   style?: React.CSSProperties;
 }) {
   const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let objectUrl: string | null = null;
-    const token = localStorage.getItem("token");
+    const controller = new AbortController();
+    const encodedKey = minioKey.split("/").map(encodeURIComponent).join("/");
 
-    fetch(`${BASE_URL}/photos/${minioKey}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    setSrc(null);
+    setFailed(false);
+    fetch(`${BASE_URL}/photos/${encodedKey}`, {
+      credentials: "include",
+      headers: getAuthHeaders(),
+      signal: controller.signal,
     })
-      .then(r => r.blob())
+      .then(r => {
+        if (!r.ok) throw new Error("Не удалось загрузить фото");
+        return r.blob();
+      })
       .then(blob => {
         objectUrl = URL.createObjectURL(blob);
         setSrc(objectUrl);
       })
-      .catch(() => {});
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        setFailed(true);
+      });
 
     return () => {
+      controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [minioKey]);
+
+  if (failed) return (
+    <div className={className} style={{ ...style, background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ color: "#dc2626", fontSize: 12 }}>Не удалось загрузить</span>
+    </div>
+  );
 
   if (!src) return (
     <div className={className} style={{ ...style, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center" }}>

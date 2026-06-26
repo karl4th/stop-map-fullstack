@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.models.stop_card import StopCardStatus
 from app.models.user import User
 from app.repositories.stop_card import StopCardRepository
 from app.repositories.stop_card_photo import StopCardPhotoRepository
@@ -27,17 +28,15 @@ async def list_stop_cards(
     current_user: User = Depends(require_safety_engineer_or_admin),
 ):
     """Все карты на проверке ОТ и ТБ (+ история)"""
-    from app.models.stop_card import StopCardStatus
     if current_user.role.value == "admin":
         return await svc.repo.get_all()
-    # Инженер видит карты на своей стадии + уже решённые им
-    all_cards = await svc.repo.get_all()
-    relevant = {
-        StopCardStatus.safety_check,
-        StopCardStatus.approved,
-        StopCardStatus.rejected,
-    }
-    return [c for c in all_cards if c.status in relevant]
+    return await svc.get_filtered(
+        statuses=[
+            StopCardStatus.safety_check,
+            StopCardStatus.approved,
+            StopCardStatus.rejected,
+        ],
+    )
 
 
 @router.get("/{stop_card_id}", response_model=StopCardPublicResponse)

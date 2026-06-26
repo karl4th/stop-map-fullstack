@@ -10,6 +10,21 @@ class UserService:
     async def get_all(self) -> list[User]:
         return await self.repo.get_all()
 
+    async def get_filtered(
+        self,
+        *,
+        section_id: int | None = None,
+        role: UserRole | None = None,
+        status: UserStatus | None = None,
+        search: str | None = None,
+    ) -> list[User]:
+        return await self.repo.get_filtered(
+            section_id=section_id,
+            role=role,
+            status=status,
+            search=search,
+        )
+
     async def get_by_id(self, user_id: int) -> User:
         user = await self.repo.get_by_id(user_id)
         if user is None:
@@ -54,6 +69,8 @@ class UserService:
         if role in (UserRole.manager, UserRole.safety_engineer, UserRole.admin):
             if not password:
                 raise ValueError("Для данной роли необходимо задать пароль")
+            if len(password) < 10:
+                raise ValueError("Пароль должен быть не короче 10 символов")
             user.hashed_password = hash_password(password)
         if section_id is not None:
             user.section_id = section_id

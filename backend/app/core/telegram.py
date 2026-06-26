@@ -5,6 +5,24 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(
+            timeout=httpx.Timeout(8, connect=3),
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+    return _client
+
+
+async def close_telegram_client() -> None:
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
 
 
 async def notify(chat_id: int, text: str, inline_keyboard: list | None = None) -> None:
@@ -13,7 +31,7 @@ async def notify(chat_id: int, text: str, inline_keyboard: list | None = None) -
     if inline_keyboard:
         payload["reply_markup"] = {"inline_keyboard": inline_keyboard}
     try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            await client.post(url, json=payload)
+        response = await _get_client().post(url, json=payload)
+        response.raise_for_status()
     except Exception as e:
         logger.warning("Telegram notify failed for %s: %s", chat_id, e)
